@@ -1,4 +1,4 @@
-rem @echo off
+@echo off
 rem batch file to build everything
 rem IF NOTHING COMPILES, CHECK IF YOUR CVS CHECKOUT USES CORRECT DOS LINEBREAKS
 
@@ -57,6 +57,8 @@ if "%1" == "win"   set ALLCFLAGS=%ALLCFLAGS% -DWIN31SUPPORT
 if "%1" == "win"   set NASMFLAGS=%NASMFLAGS% -DWIN31SUPPORT
 
 if "%1" == "list"  set NASMFLAGS=%NASMFLAGS% -l$*.lst
+
+if "%1" == "dosc"   set ALLCFLAGS=%ALLCFLAGS% -DOEM_DOSC
 
 if "%1" == "/L"    goto setLoadSeg
 if "%1" == "/D"    goto setDefine

@@ -27,19 +27,8 @@
 #include "portab.h"
 #include "globals.h"
 #include "dyndata.h"
+#include "debug.h"
 
-#ifdef VERSION_STRINGS
-static BYTE *dskRcsId =
-    "$Id: dsk.c 1702 2012-02-04 08:46:16Z perditionc $";
-#endif
-
-#if defined(DEBUG)
-#define DebugPrintf(x) printf x
-#else
-#define DebugPrintf(x)
-#endif
-
-/* #define STATIC  */
 
 BOOL ASMPASCAL fl_reset(WORD);
 COUNT ASMPASCAL fl_diskchanged(WORD);
@@ -136,32 +125,32 @@ STATIC WORD dskerr();
 static dsk_proc * const dispatch[NENTRY] =
 {
       /* disk init is done in diskinit.c, so this should never be called */
-      blk_error,                /* Initialize                   */
-      mediachk,                 /* Media Check                  */
-      bldbpb,                   /* Build BPB                    */
-      blk_error,                /* Ioctl In                     */
-      blockio,                  /* Input (Read)                 */
-      blk_nondr,                /* Non-destructive Read         */
-      blk_noerr,                /* Input Status                 */
-      blk_noerr,                /* Input Flush                  */
-      blockio,                  /* Output (Write)               */
-      blockio,                  /* Output with verify           */
-      blk_noerr,                /* Output Status                */
-      blk_noerr,                /* Output Flush                 */
-      blk_error,                /* Ioctl Out                    */
-      blk_Open,                 /* Device Open                  */
-      blk_Close,                /* Device Close                 */
-      blk_Media,                /* Removable Media              */
-      blk_noerr,                /* Output till busy             */
-      blk_error,                /* undefined                    */
-      blk_error,                /* undefined                    */
-      Genblkdev,                /* Generic Ioctl Call           */
-      blk_error,                /* undefined                    */
-      blk_error,                /* undefined                    */
-      blk_error,                /* undefined                    */
-      Getlogdev,                /* Get Logical Device           */
-      Setlogdev,                /* Set Logical Device           */
-      IoctlQueblk               /* Ioctl Query                  */
+      blk_error,                /* 0x00 Initialize              */
+      mediachk,                 /* 0x01 Media Check             */
+      bldbpb,                   /* 0x02 Build BPB               */
+      blk_error,                /* 0x03 Ioctl In                */
+      blockio,                  /* 0x04 Input (Read)            */
+      blk_nondr,                /* 0x05 Non-destructive Read    */
+      blk_noerr,                /* 0x06 Input Status            */
+      blk_noerr,                /* 0x07 Input Flush             */
+      blockio,                  /* 0x08 Output (Write)          */
+      blockio,                  /* 0x09 Output with verify      */
+      blk_noerr,                /* 0x0A Output Status           */
+      blk_noerr,                /* 0x0B Output Flush            */
+      blk_error,                /* 0x0C Ioctl Out               */
+      blk_Open,                 /* 0x0D Device Open             */
+      blk_Close,                /* 0x0E Device Close            */
+      blk_Media,                /* 0x0F Removable Media         */
+      blk_noerr,                /* 0x10 Output till busy        */
+      blk_error,                /* 0x11 undefined               */
+      blk_error,                /* 0x12 undefined               */
+      Genblkdev,                /* 0x13 Generic Ioctl Call      */
+      blk_error,                /* 0x14 undefined               */
+      blk_error,                /* 0x15 undefined               */
+      blk_error,                /* 0x16 undefined               */
+      Getlogdev,                /* 0x17 Get Logical Device      */
+      Setlogdev,                /* 0x18 Set Logical Device      */
+      IoctlQueblk               /* 0x19 Ioctl Query             */
 };
 
 #define hd(x)   ((x) & DF_FIXED)
@@ -263,7 +252,7 @@ STATIC WORD mediachk(rqptr rp, ddt * pddt)
   else if (pddt->ddt_descflags & DF_DISKCHANGE)
   {
     pddt->ddt_descflags &= ~DF_DISKCHANGE;
-    rp->r_mcretcode = M_DONT_KNOW;
+    rp->r_mcretcode = M_DONT_KNOW;  /* treat as M_CHANGED but try to flush buffers 1st */
   }
   else
   {
@@ -329,6 +318,8 @@ STATIC WORD Setlogdev(rqptr rp, ddt * pddt)
     return S_DONE;
   getddt(rp->r_unit - 1)->ddt_descflags &= ~DF_CURLOG;
   pddt->ddt_descflags |= DF_CURLOG;
+  
+  /* Both 0x17 Getlogdev() and 0x18 Setlogdev() return logical unit # */
   rp->r_unit = unit + 1;
   return S_DONE;
 }
@@ -651,7 +642,7 @@ STATIC WORD Genblkdev(rqptr rp, ddt * pddt)
               {
                 /* specified tracks, sectors/track not allowed for drive */
                 fv->gbfv_spcfunbit = 2;
-                return dskerr(0xc);
+                return failure(E_NOTFND); /*dskerr(0xc)*/
               }
             }
             fl_setdisktype(pddt->ddt_driveno, type);
@@ -754,9 +745,11 @@ STATIC WORD Genblkdev(rqptr rp, ddt * pddt)
         pbpb =
             (gblp->gbio_spcfunbit & 0x01) ==
             0 ? &pddt->ddt_defbpb : &pddt->ddt_bpb;
+        /* Note: last 6 bytes of standard BPB may not be copied for
+           0x60 when rp->r_cat==8 in some versions of DOS eg MSDOS5,see rbil */
 #ifdef WITHFAT32
         fmemcpy(&gblp->gbio_bpb, pbpb,
-                extended ? sizeof(gblp->gbio_bpb) : BPB_SIZEOF);
+                extended ? sizeof(gblp->gbio_bpb) : BPB_SIZEOF-6);
 #else
         fmemcpy(&gblp->gbio_bpb, pbpb, sizeof(gblp->gbio_bpb));
 #endif

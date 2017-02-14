@@ -69,26 +69,26 @@ typedef struct {
   UBYTE ps_farcall;             /* 05  far call opcode             */
   VOID(FAR ASMCFUNC * ps_reentry) (void);  /* 06  re-entry point          */
 
-  intvec ps_isv22,              /* 0a terminate address            */
-         ps_isv23,              /* 0e ctrl-break address           */
-         ps_isv24;              /* 12 critical error address       */
-  UWORD ps_parent;              /* 16 parent psp segment           */
-  UBYTE ps_files[20];           /* 18 file table - 0xff is unused  */
-  UWORD ps_environ;             /* 2c environment paragraph        */
-  BYTE FAR *ps_stack;           /* 2e user stack pointer - int 21  */
-  UWORD ps_maxfiles;            /* 32 maximum open files           */
-  UBYTE FAR *ps_filetab;        /* 34 open file table pointer      */
-  VOID FAR *ps_prevpsp;         /* 38 previous psp pointer         */
-  UBYTE ps_fill2;               /* 3c unused                       */
+  intvec ps_isv22,              /* 0a terminate address                         */
+         ps_isv23,              /* 0e ctrl-break address                        */
+         ps_isv24;              /* 12 critical error address                    */
+  UWORD ps_parent;              /* 16 parent psp segment                        */
+  UBYTE ps_files[20];           /* 18 file table - 0xff is unused, JobFileTable */
+  UWORD ps_environ;             /* 2c environment paragraph(seg) of this process*/
+  BYTE FAR *ps_stack;           /* 2e user stack pointer - on last int 21h call */
+  UWORD ps_maxfiles;            /* 32 maximum open files, default 20            */
+  UBYTE FAR *ps_filetab;        /* 34 open file table pointer, pointer to JFT   */
+  VOID FAR *ps_prevpsp;         /* 38 previous psp pointer                      */
+  UBYTE ps_fill2;               /* 3c unused=0                                  */
   UBYTE ps_truename;            /* 3d [unused] append truename flag int2f/B711h */
-  UBYTE ps_netx_taskid[2];      /* 3e [Novell only field] task id  */
-  UWORD ps_retdosver;           /* 40 [unused] version to return on int21/30h */
-  UWORD pdb_next;               /* 42 [Win only field] PSP chain   */
-  UBYTE ps_fill2b[4];           /* 44 unused, 4 bytes              */
-  UBYTE ps_olddos;              /* 48 [Win only field] DOS/Win program */
-  UBYTE ps_fill2c[7];           /* 49 unused, 7 bytes              */
-  UBYTE ps_unix[3];             /* 50 unix style call - 0xcd 0x21 0xcb */
-  BYTE ps_fill3[9];             /* 53 */
+  UBYTE ps_netx_taskid[2];      /* 3e [Novell only field] task id               */
+  UWORD ps_retdosver;           /* 40 [unused] version to return on int21/30h   */
+  UWORD pdb_next;               /* 42 [Win only field] PSP chain                */
+  UBYTE ps_fill2b[4];           /* 44 unused, 4 bytes                           */
+  UBYTE ps_olddos;              /* 48 [Win only field] DOS/Win program          */
+  UBYTE ps_fill2c[7];           /* 49 unused, 7 bytes                           */
+  UBYTE ps_unix[3];             /* 50 unix style call - 0xcd 0x21 0xcb          */
+  BYTE ps_fill3[9];             /* 53 unused, 9 bytes                           */
   union {
     struct {
       fcb _ps_fcb1;             /* 5c first command line argument */

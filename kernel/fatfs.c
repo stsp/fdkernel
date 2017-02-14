@@ -1580,21 +1580,23 @@ VOID bpb_to_dpb(bpb FAR * bpbp, REG struct dpb FAR * dpbp)
 {
   ULONG size;
   REG UWORD shftcnt;
-  bpb sbpb;
+  bpb_fat_ext ebpb;
+  bpb_fat *sbpb = &ebpb.bpb;
 
-  fmemcpy(&sbpb, bpbp, sizeof(sbpb));
-  for (shftcnt = 0; (sbpb.bpb_nsector >> shftcnt) > 1; shftcnt++)
+  /* Note: extra data past bpb may be copied if bpbp points to a bpb_fat_std */
+  fmemcpy(&ebpb, bpbp, sizeof(ebpb));  
+  for (shftcnt = 0; (sbpb->bpb_nsector >> shftcnt) > 1; shftcnt++)
     ;
   dpbp->dpb_shftcnt = shftcnt;
 
-  dpbp->dpb_mdb = sbpb.bpb_mdesc;
-  dpbp->dpb_secsize = sbpb.bpb_nbyte;
-  dpbp->dpb_clsmask = sbpb.bpb_nsector - 1;
-  dpbp->dpb_fatstrt = sbpb.bpb_nreserved;
-  dpbp->dpb_fats = sbpb.bpb_nfat;
-  dpbp->dpb_dirents = sbpb.bpb_ndirent;
-  size = sbpb.bpb_nsize == 0 ? sbpb.bpb_huge : (ULONG) sbpb.bpb_nsize;
-  dpbp->dpb_fatsize = sbpb.bpb_nfsect;
+  dpbp->dpb_mdb = sbpb->bpb_mdesc;
+  dpbp->dpb_secsize = sbpb->bpb_nbyte;
+  dpbp->dpb_clsmask = sbpb->bpb_nsector - 1;
+  dpbp->dpb_fatstrt = sbpb->bpb_nreserved;
+  dpbp->dpb_fats = sbpb->bpb_nfat;
+  dpbp->dpb_dirents = sbpb->bpb_ndirent;
+  size = sbpb->bpb_nsize == 0 ? sbpb->bpb_huge : (ULONG) sbpb->bpb_nsize;
+  dpbp->dpb_fatsize = sbpb->bpb_nfsect;
   dpbp->dpb_dirstrt = dpbp->dpb_fatstrt + dpbp->dpb_fats * dpbp->dpb_fatsize;
   dpbp->dpb_data = dpbp->dpb_dirstrt
       + (dpbp->dpb_dirents + dpbp->dpb_secsize/DIRENT_SIZE - 1) /
@@ -1627,8 +1629,8 @@ ckok:;
 #ifdef WITHFAT32
   if (extended)
   {
-    dpbp->dpb_xfatsize = sbpb.bpb_nfsect == 0 ? sbpb.bpb_xnfsect
-        : sbpb.bpb_nfsect;
+    dpbp->dpb_xfatsize = sbpb->bpb_nfsect == 0 ? ebpb.bpb_xnfsect
+        : sbpb->bpb_nfsect;
     dpbp->dpb_xcluster = UNKNCLUSTER;
     dpbp->dpb_xnfreeclst = XUNKNCLSTFREE;       /* number of free clusters */
 
@@ -1636,16 +1638,16 @@ ckok:;
 
     if (ISFAT32(dpbp))
     {
-      dpbp->dpb_xflags = sbpb.bpb_xflags;
-      dpbp->dpb_xfsinfosec = sbpb.bpb_xfsinfosec;
-      dpbp->dpb_xbackupsec = sbpb.bpb_xbackupsec;
+      dpbp->dpb_xflags = ebpb.bpb_xflags;
+      dpbp->dpb_xfsinfosec = ebpb.bpb_xfsinfosec;
+      dpbp->dpb_xbackupsec = ebpb.bpb_xbackupsec;
       dpbp->dpb_dirents = 0;
       dpbp->dpb_dirstrt = 0xffff;
       dpbp->dpb_size = 0;
       dpbp->dpb_xdata =
           dpbp->dpb_fatstrt + dpbp->dpb_fats * dpbp->dpb_xfatsize;
       dpbp->dpb_xsize = ((size - dpbp->dpb_xdata) >> shftcnt) + 1;
-      dpbp->dpb_xrootclst = sbpb.bpb_xrootclst;
+      dpbp->dpb_xrootclst = ebpb.bpb_xrootclst;
       read_fsinfo(dpbp);
     }
   }

@@ -316,11 +316,11 @@ int int21_fat32(lregs *r)
           }
           if (value != 0xFFFFFFFFUL)
           {
-            bpb FAR *bpbp;
+            bpb_fat_ext FAR *bpbp;
             struct buffer FAR *bp = getblock(1, dpb->dpb_unit);
             bp->b_flag &= ~(BFR_DATA | BFR_DIR | BFR_FAT);
             bp->b_flag |= BFR_VALID | BFR_DIRTY;
-            bpbp = (bpb FAR *) & bp->b_buffer[BT_BPB];
+            bpbp = (bpb_fat_ext FAR *) & bp->b_buffer[BT_BPB];
             if ((UWORD) xdffp->xdff_function == 0x03)
               bpbp->bpb_xflags = (UWORD)value;
             else

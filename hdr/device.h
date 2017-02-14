@@ -152,29 +152,41 @@ typedef struct {
   UWORD bpb_nreserved;          /* # Reserved Sectors           */
   UBYTE bpb_nfat;               /* # FATs                       */
   UWORD bpb_ndirent;            /* # Root Directory entries     */
-  UWORD bpb_nsize;              /* Size in sectors              */
+  UWORD bpb_nsize;              /* Size in sectors, 0 if >=32MB */
   UBYTE bpb_mdesc;              /* MEDIA Descriptor Byte        */
   UWORD bpb_nfsect;             /* FAT size in sectors          */
   UWORD bpb_nsecs;              /* Sectors per track            */
   UWORD bpb_nheads;             /* Number of heads              */
+  /* if extended boot signature not set then only the low word  */
+  /* of bpb_hidden is valid and bpb_huge is not a valid value.  */
   ULONG bpb_hidden;             /* Hidden sectors               */
   ULONG bpb_huge;               /* Size in sectors if           */
-  /* bpb_nsize == 0               */
-#ifdef WITHFAT32
+                                /* bpb_nsize == 0               */
+} bpb_fat;                      /* 1st 25 bytes of BPB shared   */
+                                /* by FAT 12/16 and FAT 32      */
+typedef bpb_fat bpb;            /* only FAT BPBs are supported  */
+
+typedef struct {
+  bpb_fat bpb;
+  UBYTE bpb_unused[6];          /* 6 bytes reserved/unused      */
+} bpb_fat_std;                  /* standard bpb for FAT (12/16) */
+
+typedef struct {
+  bpb_fat bpb;
   ULONG bpb_xnfsect;            /* FAT size in sectors if       */
-  /* bpb_nfsect == 0              */
+                                /* bpb_nfsect == 0              */
   UWORD bpb_xflags;             /* extended flags               */
-  /* bit 7: disable mirroring     */
-  /* bits 6-4: reserved (0)       */
-  /* bits 3-0: active FAT number  */
+                                /* bit 7: disable mirroring     */
+                                /* bits 6-4: reserved (0)       */
+                                /* bits 3-0: active FAT number  */
   UWORD bpb_xfsversion;         /* filesystem version           */
   ULONG bpb_xrootclst;          /* starting cluster of root dir */
   UWORD bpb_xfsinfosec;         /* FS info sector number,       */
-  /* 0xFFFF if unknown            */
+                                /* 0xFFFF if unknown            */
   UWORD bpb_xbackupsec;         /* backup boot sector number    */
-  /* 0xFFFF if unknown            */
-#endif
-} bpb;
+                                /* 0xFFFF if unknown            */
+} bpb_fat_ext;                  /* extended bpb for FAT (32)    */
+
 
 #define N_RETRY         5       /* number of retries permitted  */
 
@@ -209,6 +221,8 @@ typedef struct ddtstruct {
   UBYTE ddt_driveno;            /* physical unit number (for INT 13)     */
   UBYTE ddt_logdriveno;         /* logical drive number (0=A:)        */
   bpb ddt_bpb;                  /* BIOS Parameter Block */
+                                /* TODO is this always 1st 25 bytes or
+                                   only on FAT12/16 systems? */
   UBYTE ddt_flags;
   /* bit 6: 16-bit FAT instead of 12-bit
      bit 7: unsupportable disk (all accesses will return Not Ready) */
@@ -218,7 +232,11 @@ typedef struct ddtstruct {
   UWORD ddt_ncyl;               /* number of cylinders
                                    (for partition only, if hard disk) */
   bpb ddt_defbpb;               /* BPB for default (highest) capacity supported */
-  UBYTE ddt_reserved[6];        /* (part of BPB above) */
+#ifdef WITHFAT32                /* part of BPB - verify size when FAT32 enabled */
+  UBYTE ddt_reserved[sizeof(bpb_fat_ext)-sizeof(bpb_fat)];
+#else
+  UBYTE ddt_reserved[sizeof(bpb_fat_std)-sizeof(bpb_fat)];  /* 6 bytes */
+#endif
   UBYTE ddt_ltrack;             /* last track accessed */
   union {
     ULONG ddt_lasttime;         /* removable media: time of last access
@@ -307,14 +325,10 @@ struct Access_info {
 #define BT_SIZEOF       36
 
 typedef struct {
-  BYTE bt_jump[3];              /* Boot Jump opcodes            */
-  BYTE bt_oem[8];               /* OEM Name                     */
-  bpb bt_bpb;                   /* BPB for this media/device    */
-  WORD bt_nsecs;                /* # Sectors per Track          */
-  WORD bt_nheads;               /* # Heads                      */
-  WORD bt_hidden;               /* # Hidden sectors             */
-  LONG bt_huge;                 /* use if nsecs == 0            */
-  BYTE bt_drvno;
+  BYTE bt_jump[3];              /* Boot Jump opcode (and NOP to pad)    */
+  BYTE bt_oem[8];               /* OEM Name                             */
+  bpb bt_bpb;                   /* BPB for this media/device            */
+  BYTE bt_drvno;                /* offset depends on size of BPB        */
   BYTE bt_reserv;
   BYTE bt_btid;
   ULONG bt_serialno;

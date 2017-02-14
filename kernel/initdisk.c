@@ -266,26 +266,15 @@ COUNT init_readdasd(UBYTE drive)
   return 0;
 }
 
-typedef struct {
-  UWORD bpb_nbyte;              /* Bytes per Sector             */
-  UBYTE bpb_nsector;            /* Sectors per Allocation Unit  */
-  UWORD bpb_nreserved;          /* # Reserved Sectors           */
-  UBYTE bpb_nfat;               /* # FATs                       */
-  UWORD bpb_ndirent;            /* # Root Directory entries     */
-  UWORD bpb_nsize;              /* Size in sectors              */
-  UBYTE bpb_mdesc;              /* MEDIA Descriptor Byte        */
-  UWORD bpb_nfsect;             /* FAT size in sectors          */
-  UWORD bpb_nsecs;              /* Sectors per track            */
-  UWORD bpb_nheads;             /* Number of heads              */
-} floppy_bpb;
 
-floppy_bpb floppy_bpbs[5] = {
-/* copied from Brian Reifsnyder's FORMAT, bpb.h */
-  {FLOPPY_SEC_SIZE, 2, 1, 2, 112, 720, 0xfd, 2, 9, 2}, /* FD360  5.25 DS   */
-  {FLOPPY_SEC_SIZE, 1, 1, 2, 224, 2400, 0xf9, 7, 15, 2},       /* FD1200 5.25 HD   */
-  {FLOPPY_SEC_SIZE, 2, 1, 2, 112, 1440, 0xf9, 3, 9, 2},        /* FD720  3.5  LD   */
-  {FLOPPY_SEC_SIZE, 1, 1, 2, 224, 2880, 0xf0, 9, 18, 2},       /* FD1440 3.5  HD   */
-  {FLOPPY_SEC_SIZE, 2, 1, 2, 240, 5760, 0xf0, 9, 36, 2}        /* FD2880 3.5  ED   */
+
+bpb_fat floppy_bpbs[5] = {
+  /* based on Brian Reifsnyder's FORMAT, bpb.h */
+  {FLOPPY_SEC_SIZE, 2, 1, 2, 112, 720, 0xfd, 2, 9, 2, 0, 0},   /* FD360  5.25 DS   */
+  {FLOPPY_SEC_SIZE, 1, 1, 2, 224, 2400, 0xf9, 7, 15, 2, 0, 0}, /* FD1200 5.25 HD   */
+  {FLOPPY_SEC_SIZE, 2, 1, 2, 112, 1440, 0xf9, 3, 9, 2, 0, 0},  /* FD720  3.5  LD   */
+  {FLOPPY_SEC_SIZE, 1, 1, 2, 224, 2880, 0xf0, 9, 18, 2, 0, 0}, /* FD1440 3.5  HD   */
+  {FLOPPY_SEC_SIZE, 2, 1, 2, 240, 5760, 0xf0, 9, 36, 2, 0, 0}  /* FD2880 3.5  ED   */
 };
 
 COUNT init_getdriveparm(UBYTE drive, bpb * pbpbarray)
@@ -306,9 +295,8 @@ COUNT init_getdriveparm(UBYTE drive, bpb * pbpbarray)
   else if (type == 5)
     type = 4;                   /* 5 and 4 are both 2.88 MB */
 
-  memcpy(pbpbarray, &floppy_bpbs[type & 7], sizeof(floppy_bpb));
-  ((bpb *)pbpbarray)->bpb_hidden = 0;  /* very important to init to 0, see bug#1789 */
-  ((bpb *)pbpbarray)->bpb_huge = 0;
+  /* ensure BPB fully initialized, even hidden & huge values, see bug#1789 */
+  memcpy(pbpbarray, &floppy_bpbs[type & 7], sizeof(bpb_fat));
 
   if (type == 3)
     return 7;                   /* 1.44 MB */
@@ -410,7 +398,7 @@ VOID CalculateFATData(ddt * pddt, ULONG NumSectors, UBYTE FileSystem)
     /* The "+2*NSECTORFAT12" is for the reserved first two FAT entries */
     defbpb->bpb_nfsect = (UWORD)cdiv((fatdat + 2 * NSECTORFAT12) * 3UL,
                                      FLOPPY_SEC_SIZE * 2 * NSECTORFAT12 + NFAT*3);
-#ifdef DEBUG
+#ifdef _DEBUG
     /* Need to calculate number of clusters, since the unused parts of the
      * FATS and data area together could make up space for an additional,
      * not really present cluster.
@@ -513,14 +501,15 @@ VOID CalculateFATData(ddt * pddt, ULONG NumSectors, UBYTE FileSystem)
 #ifdef WITHFAT32
     if (FileSystem == FAT32 || FileSystem == FAT32_LBA)
     {
+      bpb_fat_ext *ebpb = (bpb_fat_ext *)defbpb;
       defbpb->bpb_nfsect = 0;
-      defbpb->bpb_xnfsect = fatlength;
+      ebpb->bpb_xnfsect = fatlength;
       /* set up additional FAT32 fields */
-      defbpb->bpb_xflags = 0;
-      defbpb->bpb_xfsversion = 0;
-      defbpb->bpb_xrootclst = 2;
-      defbpb->bpb_xfsinfosec = 1;
-      defbpb->bpb_xbackupsec = 6;
+      ebpb->bpb_xflags = 0;
+      ebpb->bpb_xfsversion = 0;
+      ebpb->bpb_xrootclst = 2;
+      ebpb->bpb_xfsinfosec = 1;
+      ebpb->bpb_xbackupsec = 6;
       memcpy(pddt->ddt_fstype, MSDOS_FAT32_SIGN, 8);
     }
     else

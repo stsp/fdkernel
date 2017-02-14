@@ -28,12 +28,6 @@
 /* Cambridge, MA 02139, USA.                                    */
 /****************************************************************/
 
-#ifdef MAIN
-#ifdef VERSION_STRINGS
-static char *portab_hRcsId =
-    "$Id: portab.h 1121 2005-03-15 15:25:08Z perditionc $";
-#endif
-#endif
 
 /****************************************************************/
 /*                                                              */
@@ -64,6 +58,10 @@ static char *portab_hRcsId =
 #define I86
 #define CDECL   cdecl
 #if __TURBOC__ > 0x202
+#if __TURBOC__ < 0x400 /* targeted to TC++ 1.0 which is 0x297 (3.1 is 0x410) */
+#pragma warn -pia /* possibly incorrect assignment */
+#pragma warn -sus /* suspicious pointer conversion */
+#endif
 /* printf callers do the right thing for tc++ 1.01 but not tc 2.01 */
 #define VA_CDECL
 #else
@@ -73,8 +71,9 @@ static char *portab_hRcsId =
 void __int__(int);
 #ifndef FORSYS
 void __emit__(char, ...);
-#define disable() __emit__(0xfa)
-#define enable() __emit__(0xfb)
+#define disable() __emit__(0xfa)  /* cli; disable interrupts   */
+#define enable() __emit__(0xfb)   /* sti; enable interrupts    */
+#define halt() __emit__(0xf4)     /* hlt; halt until interrupt */
 #endif
 
 #elif defined	(_MSC_VER)
@@ -89,6 +88,7 @@ void __emit__(char, ...);
 #define __int__(intno) asm int intno;
 #define disable() asm cli
 #define enable() asm sti
+#define halt() asm hlt
 #define _CS getCS()
 static unsigned short __inline getCS(void)
 {
@@ -113,6 +113,8 @@ void disable(void);
 #pragma aux disable = "cli" modify exact [];
 void enable(void);
 #pragma aux enable = "sti" modify exact [];
+void halt(void);
+#pragma aux halt = "hlt" modify exact [];
 #define asm __asm
 #define far __far
 #define CDECL   __cdecl
@@ -272,20 +274,20 @@ typedef signed long LONG;
 
 /* General far pointer macros                                           */
 #ifdef I86
-#ifndef MK_FP
 
+#ifndef MK_FP
 #if defined(__WATCOMC__)
 #define MK_FP(seg,ofs) 	      (((UWORD)(seg)):>((VOID *)(ofs)))
 #elif defined(__TURBOC__) && (__TURBOC__ > 0x202)
 #define MK_FP(seg,ofs)        ((void _seg *)(seg) + (void near *)(ofs))
 #else
-#define MK_FP(seg,ofs)        ((void FAR *)(((ULONG)(seg)<<16)|(UWORD)(ofs)))
+#define MK_FP(seg,ofs)        ((void FAR *)MK_ULONG(seg, ofs))
 #endif
 
-#define pokeb(seg, ofs, b) (*((unsigned char far *)MK_FP(seg,ofs)) = b)
-#define poke(seg, ofs, w) (*((unsigned far *)MK_FP(seg,ofs)) = w)
+#define pokeb(seg, ofs, b) (*((unsigned char far *)MK_FP(seg,ofs)) = (b))
+#define poke(seg, ofs, w) (*((unsigned far *)MK_FP(seg,ofs)) = (w))
 #define pokew poke
-#define pokel(seg, ofs, l) (*((unsigned long far *)MK_FP(seg,ofs)) = l)
+#define pokel(seg, ofs, l) (*((unsigned long far *)MK_FP(seg,ofs)) = (l))
 #define peekb(seg, ofs) (*((unsigned char far *)MK_FP(seg,ofs)))
 #define peek(seg, ofs) (*((unsigned far *)MK_FP(seg,ofs)))
 #define peekw peek
@@ -323,7 +325,7 @@ typedef VOID (FAR ASMCFUNC * intvec) (void);
 	unreferenced parameter 'x'
 	and (hopefully) generates no code
 */
-#define UNREFERENCED_PARAMETER(x) (void)x;
+#define UNREFERENCED_PARAMETER(x) (void)(x)
 
 #ifdef I86                      /* commandline overflow - removing /DPROTO TE */
 #define PROTO
