@@ -236,6 +236,35 @@ reloc_call_int20_handler:
 ;       int21_handler(iregs UserRegs)
 ;
 reloc_call_int21_handler:
+;%define OEMHANDLER  ; enable OEM hook, mostly OEM DOS 2.x, maybe through OEM 6.x
+%ifdef OEMHANDLER
+                extern _OemHook21
+                ; When defined and set (!= ffff:ffffh) invoke installed
+                ; int 21h handler for ah=f9h through ffh
+                ; with all registers preserved, callee must perform the iret
+                cmp ah, 0f9h        ; if a normal int21 call, proceed
+                jb skip_oemhndlr    ; as quickly as possible
+                ; we need all registers preserved but also
+                ; access to the hook address, so we copy locally
+                ; 1st (while performing check for valid address)
+                ; then do the jmp
+                push ds
+                push dx
+                mov  dx,[cs:_DGROUP_]
+                mov  ds,dx
+                cmp  word [_OemHook21], -1
+                je   no_oemhndlr
+                cmp  word [_OemHook21+2], -1
+                je   no_oemhndlr
+                pop  dx
+                pop  ds
+                jmp  far [ds:_OemHook21]  ; invoke OEM handler (no return)
+;local_hookaddr  dd   0
+no_oemhndlr:
+                pop  dx
+                pop  ds
+skip_oemhndlr:
+%endif ;OEMHANDLER
                 ;
                 ; Create the stack frame for C call.  This is done to
                 ; preserve machine state and provide a C structure for

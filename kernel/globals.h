@@ -27,12 +27,6 @@
 /* Cambridge, MA 02139, USA.                                    */
 /****************************************************************/
 
-#ifdef VERSION_STRINGS
-#ifdef MAIN
-static BYTE *Globals_hRcsId =
-    "$Id: globals.h 1705 2012-02-07 08:10:33Z perditionc $";
-#endif
-#endif
 
 #include "device.h"
 #include "mcb.h"
@@ -202,7 +196,7 @@ GLOBAL WORD bDumpRdWrParms
 #if 0                           /* defined in MAIN.C now to save low memory */
 
 GLOBAL BYTE copyright[] =
-    "(C) Copyright 1995-2006 Pasquale J. Villani and The FreeDOS Project.\n"
+    "(C) Copyright 1995-2017 Pasquale J. Villani and The FreeDOS Project.\n"
     "All Rights Reserved. This is free software and comes with ABSOLUTELY NO\n"
     "WARRANTY; you can redistribute it and/or modify it under the terms of the\n"
     "GNU General Public License as published by the Free Software Foundation;\n"

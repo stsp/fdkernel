@@ -785,6 +785,8 @@ STATIC WORD Genblkdev(rqptr rp, ddt * pddt)
         ai->AI_Flag = descflags & DF_NOACCESS ? 0 : 1;        /* bit 9 */
       }
       break;
+    case 0x68:                 /* auto-determine media type */
+      /* not implemented */
     default:
       return failure(E_CMD);
   }
@@ -992,7 +994,7 @@ STATIC int LBA_Transfer(ddt * pddt, UWORD mode, VOID FAR * buffer,
   if (!hd(pddt->ddt_descflags))
   {
     UBYTE FAR  *int1e_ptr = (UBYTE FAR *)getvec(0x1e);
-    unsigned char nsecs = (unsigned char)(pddt->ddt_bpb.bpb_nsecs);
+    UBYTE nsecs = (UBYTE)(pddt->ddt_bpb.bpb_nsecs);
 
     if (int1e_ptr[4] != nsecs)
     {

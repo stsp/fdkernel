@@ -386,6 +386,7 @@ UBYTE FcbRandomIO(xfcb FAR * lpXfcb, int mode)
      record size (fcb_recsiz) to 128; set to 0 for devices
      time & date (fcb_time & fcb_date) values from directory entry
      fcb_sftno, fcb_attrib_hi/_lo, fcb_strtclst, fcb_dirclst/off_unused are for internal use (system reserved)
+   [The MS-DOS Encyclopedia, Microsoft Press, 1988]
 */
 UBYTE FcbOpen(xfcb FAR * lpXfcb, unsigned flags)
 {
