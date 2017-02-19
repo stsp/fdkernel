@@ -69,7 +69,7 @@ COUNT nUnits BSS_INIT(0);
  *
  * why not?
  *
- * a) this is my personal favorite, combining the best aof all worlds.
+ * a) this is my personal favorite, combining the best of all worlds.
  *    TURBO-C does support inline assembly, but only by using TASM,
  *    which is not free. 
  *    so - unfortunately- its excluded.
@@ -255,7 +255,7 @@ COUNT init_readdasd(UBYTE drive)
   regs.a.b.h = 0x15;
   regs.d.b.l = drive;
   init_call_intr(0x13, &regs);
-  if ((regs.flags & 1) == 0)
+  if ((regs.flags & FLG_CARRY) == 0)
     switch (regs.a.b.h)
     {
       case 2:
@@ -286,9 +286,10 @@ COUNT init_getdriveparm(UBYTE drive, bpb * pbpbarray)
     return 5;
   regs.a.b.h = 0x08;
   regs.d.b.l = drive;
+  /* Note: RBIL suggests setting ES:DI to 0:0 to guard against BIOS bugs */
   init_call_intr(0x13, &regs);
   type = regs.b.b.l - 1;
-  if (regs.flags & 1)
+  if (regs.flags & FLG_CARRY)
     type = 0;                   /* return 320-360 for XTs */
   else if (type > 6)
     type = 8;                   /* any odd ball drives get 8&7=0: the 320-360 table */
@@ -551,7 +552,7 @@ void DosDefinePartition(struct DriveParamS *driveParam,
   pddt->ddt_driveno = driveParam->driveno;
   pddt->ddt_logdriveno = nUnits;
   pddt->ddt_descflags = driveParam->descflags;
-  /* Turn of LBA if not forced and the partition is within 1023 cyls and of the right type */
+  /* Turn off LBA if not forced and the partition is within 1023 cyls and of the right type */
   /* the FileSystem type was internally converted to LBA_xxxx if a non-LBA partition
      above cylinder 1023 was found */
   if (!InitKernelConfig.ForceLBA && !ExtLBAForce && !IsLBAPartition(pEntry->FileSystem))
@@ -641,7 +642,7 @@ STATIC int LBA_Get_Drive_Parameters(int drive, struct DriveParamS *driveParam)
 
   init_call_intr(0x13, &regs);
 
-  if (regs.b.x != 0xaa55 || (regs.flags & 0x01))
+  if (regs.b.x != 0xaa55 || (regs.flags & FLG_CARRY))
   {
     goto StandardBios;
   }
@@ -671,7 +672,7 @@ STATIC int LBA_Get_Drive_Parameters(int drive, struct DriveParamS *driveParam)
   init_call_intr(0x13, &regs);
 
   /* error or DMA boundary errors not handled transparently */
-  if (regs.flags & 0x01)
+  if (regs.flags & FLG_CARRY)
   {
     goto StandardBios;
   }
@@ -707,7 +708,7 @@ StandardBios:                  /* old way to get parameters */
 
   init_call_intr(0x13, &regs);
 
-  if (regs.flags & 0x01)
+  if (regs.flags & FLG_CARRY)
     goto ErrorReturn;
 
   /* int13h call returns max value, store as count (#) i.e. +1 for 0 based heads & cylinders */
@@ -782,6 +783,9 @@ BOOL ConvPartTableEntryToIntern(struct PartTableEntry * pEntry,
   return TRUE;
 }
 
+/* compares computed chs values with those stored in partition entry
+   returns true (nonzero) if computed chs does not correspond to stored values.
+*/
 BOOL is_suspect(struct CHS *chs, struct CHS *pEntry_chs)
 {
   /* Valid entry:
@@ -798,10 +802,11 @@ BOOL is_suspect(struct CHS *chs, struct CHS *pEntry_chs)
             pEntry_chs->Cylinder == (0x3ff & chs->Cylinder)));
 }
 
+/* will only display warning message if using CHS (ie not using LBA) */
 void print_warning_suspect(char *partitionName, UBYTE fs, struct CHS *chs,
                            struct CHS *pEntry_chs)
 {
-  if (!InitKernelConfig.ForceLBA)
+  if (!InitKernelConfig.ForceLBA && !ExtLBAForce)
   {
     printf("WARNING: using suspect partition %s FS %02x:", partitionName, fs);
     printCHS(" with calculated values ", chs);
@@ -937,7 +942,7 @@ BOOL ScanForPrimaryPartitions(struct DriveParamS * driveParam, int scan_type,
 
 void BIOS_drive_reset(unsigned drive);
 
-int Read1LBASector(struct DriveParamS *driveParam, unsigned drive,
+int Read1LBASector(struct DriveParamS *driveParam,
                    ULONG LBA_address, void * buffer)
 {
   static struct _bios_LBA_address_packet dap = {
@@ -962,7 +967,7 @@ int Read1LBASector(struct DriveParamS *driveParam, unsigned drive,
 
   for (num_retries = 0; num_retries < N_RETRY; num_retries++)
   {
-    regs.d.b.l = drive | 0x80;
+    regs.d.b.l = driveParam->driveno; /* assumes valid hd, i.e. >= 0x80 */
     LBA_to_CHS(&chs, LBA_address, driveParam);
     /* Some old "security" software (PROT) traps int13 and assumes non
        LBA accesses. This statement causes partition tables to be read
@@ -1010,10 +1015,20 @@ int Read1LBASector(struct DriveParamS *driveParam, unsigned drive,
   return regs.flags & FLG_CARRY ? 1 : 0;
 }
 
-/* Load the Partition Tables and get information on all drives */
-int ProcessDisk(int scanType, unsigned drive, int PartitionsToIgnore)
+/* Load the Partition Tables and get information on all drives
+   scanType is one of:
+     SCAN_PRIMARYBOOT - primary partition marked active
+     SCAN_PRIMARY     - use 1st primary partition found, eg none active
+     SCAN_EXTENDED    - all extended partitions
+     SCAN_PRIMARY2    - all other primary partitions not already found    
+     
+   If scanType != SCAN_EXTENDED then we return with the
+   lower four bits set (valid partition, drive added) or clear
+   (unhandled or invalid) for each partition entry in the 
+   partition table, or 0 when scanType == SCAN_EXTENDED.
+*/
+int ProcessDisk(int scanType, int PartitionsToIgnore, struct DriveParamS *driveParam)
 {
-
   struct PartTableEntry PTable[4];
   ULONG RelSectorOffset;
   ULONG ExtendedPartitionOffset;
@@ -1021,17 +1036,6 @@ int ProcessDisk(int scanType, unsigned drive, int PartitionsToIgnore)
   int strangeHardwareLoop;
 
   int num_extended_found = 0;
-
-  struct DriveParamS driveParam;
-
-  /* Get the hard drive parameters and ensure that the drive exists. */
-  /* If there was an error accessing the drive, skip that drive. */
-
-  if (!LBA_Get_Drive_Parameters(drive, &driveParam))
-  {
-    printf("can't get drive parameters for drive %02x\n", drive);
-    return PartitionsToIgnore;
-  }
 
   RelSectorOffset = 0;          /* boot sector */
   ExtendedPartitionOffset = 0;  /* not found yet */
@@ -1043,11 +1047,11 @@ ReadNextPartitionTable:
   strangeHardwareLoop = 0;
 strange_restart:
 
-  if (Read1LBASector
-      (&driveParam, drive, RelSectorOffset, InitDiskTransferBuffer))
+  if (Read1LBASector(driveParam, RelSectorOffset, InitDiskTransferBuffer))
   {
-    printf("Error reading partition table drive %02Xh sector %lu", drive,
-           RelSectorOffset);
+    if (scanType == SCAN_PRIMARYBOOT) /* only display 1st time through */
+      printf("Error reading partition table drive %02Xh sector %lu", driveParam->driveno,
+             RelSectorOffset);
     return PartitionsToIgnore;
   }
 
@@ -1061,8 +1065,12 @@ strange_restart:
     if (++strangeHardwareLoop < 3)
       goto strange_restart;
 
-    printf("illegal partition table - drive %02x sector %lu\n", drive,
+    if (scanType == SCAN_PRIMARYBOOT) /* only display 1st time through */
+      printf("corrupt or unpartitioned drive %02x\n", driveParam->driveno);
+    else if (RelSectorOffset /* && (scanType == SCAN_EXTENDED) */)
+      printf("illegal extended partition table - drive %02x sector %lu\n", driveParam->driveno,
            RelSectorOffset);
+
     return PartitionsToIgnore;
   }
 
@@ -1071,12 +1079,13 @@ strange_restart:
       scanType == SCAN_PRIMARY2 || num_extended_found != 0)
   {
 
-    PartitionsToIgnore = ScanForPrimaryPartitions(&driveParam, scanType,
+    PartitionsToIgnore = ScanForPrimaryPartitions(driveParam, scanType,
                                                   PTable, RelSectorOffset,
                                                   PartitionsToIgnore,
                                                   num_extended_found);
   }
 
+  /* we are done if only looking for primary partitions */
   if (scanType != SCAN_EXTENDED)
   {
     return PartitionsToIgnore;
@@ -1121,7 +1130,7 @@ int BIOS_nrdrives(void)
   regs.d.b.l = 0x80;
   init_call_intr(0x13, &regs);
 
-  if (regs.flags & 1)
+  if (regs.flags & FLG_CARRY)
   {
     printf("no hard disks detected\n");
     return 0;
@@ -1176,7 +1185,9 @@ The following occurs at startup:
 MS-DOS checks all installed disk devices, assigning the drive letter A 
 to the first physical floppy disk drive that is found.
 
-If a second physical floppy disk drive is present, it is assigned drive letter B. If it is not present, a logical drive B is created that uses the first physical floppy disk drive.
+If a second physical floppy disk drive is present, it is assigned drive 
+letter B. If it is not present, a logical drive B is created that uses 
+the first physical floppy disk drive.
 
 Regardless of whether a second floppy disk drive is present, 
 MS-DOS then assigns the drive letter C to the primary MS-DOS 
@@ -1217,12 +1228,12 @@ by creating "dummy" drive letters with DRIVER.SYS.
 
 or
 
-  as rather well documented, DOS searches 1st) 1 primary patitions on
+  as rather well documented, DOS searches 1st) 1 primary partitions on
      all drives, 2nd) all extended partitions. that
      makes many people (including me) unhappy, as all DRIVES D:,E:...
      on 1st disk will move up/down, if other disk with
      primary partitions are added/removed, but
-     thats the way it is (hope I got it right)
+     that's the way it is (hope I got it right)
      TE (with a little help from my friends)
      see also above for WIN2000,DOS,MSDN
 
@@ -1248,11 +1259,13 @@ STATIC void make_ddt (ddt *pddt, int Unit, int driveno, int flags)
 void ReadAllPartitionTables(void)
 {
   UBYTE foundPartitions[MAX_HARD_DRIVE];
+  struct DriveParamS driveParam[MAX_HARD_DRIVE];
 
   int HardDrive;
   int nHardDisk;
   ddt nddt;
   static iregs regs;
+
 
   /* quick adjustment of diskette parameter table */
   fmemcpy(int1e_table, *(char FAR * FAR *)MK_FP(0, 0x1e*4), sizeof(int1e_table));
@@ -1287,17 +1300,31 @@ void ReadAllPartitionTables(void)
   /* Initial number of disk units                                 */
   nUnits = 2;
 
+  /* get count of installed hard drives up to max count supported */
   nHardDisk = BIOS_nrdrives();
   if (nHardDisk > LENGTH(foundPartitions))
     nHardDisk = LENGTH(foundPartitions);
-
   DebugPrintf(("DSK init: found %d disk drives\n", nHardDisk));
 
-  /* Reset the drives                                             */
+  /* Reset the drives and get parameters validating exists        */
   for (HardDrive = 0; HardDrive < nHardDisk; HardDrive++)
   {
     BIOS_drive_reset(HardDrive);
     foundPartitions[HardDrive] = 0;
+
+    /* Get the hard drive parameters and ensure that the drive exists.
+       If we are unable to obtain the disk parameters for drive,
+       then we set driveno to 0.  This is usually caused when BIOS
+       returns a count higher than drives that exists; ISOLINUX may do 
+       this and from RBIL may occur in some BIOSes.
+    */
+    if (!LBA_Get_Drive_Parameters(HardDrive, &(driveParam[HardDrive])))
+    {
+      /* If there was an error accessing the drive, skip that drive. */
+      driveParam[HardDrive].driveno = 0;
+      /* only display 1st time through */
+      printf("can't get drive parameters for drive %02x\n", HardDrive);
+    }
   }
 
   if (InitKernelConfig.DLASortByDriveNo == 0)
@@ -1307,24 +1334,33 @@ void ReadAllPartitionTables(void)
     /* Process primary partition table   1 partition only      */
     for (HardDrive = 0; HardDrive < nHardDisk; HardDrive++)
     {
+      /* skip to next drive if failed to get disk's parameters */
+      if (!driveParam[HardDrive].driveno) continue; 
+      
       foundPartitions[HardDrive] =
-          ProcessDisk(SCAN_PRIMARYBOOT, HardDrive, 0);
+          ProcessDisk(SCAN_PRIMARYBOOT, 0, &(driveParam[HardDrive]));
 
       if (foundPartitions[HardDrive] == 0)
         foundPartitions[HardDrive] =
-            ProcessDisk(SCAN_PRIMARY, HardDrive, 0);
+            ProcessDisk(SCAN_PRIMARY, 0, &(driveParam[HardDrive]));
     }
 
     /* Process extended partition table                      */
     for (HardDrive = 0; HardDrive < nHardDisk; HardDrive++)
     {
-      ProcessDisk(SCAN_EXTENDED, HardDrive, 0);
+      /* skip to next drive if failed to get disk's parameters */
+      if (!driveParam[HardDrive].driveno) continue; 
+
+      ProcessDisk(SCAN_EXTENDED, 0, &(driveParam[HardDrive]));
     }
 
     /* Process primary a 2nd time */
     for (HardDrive = 0; HardDrive < nHardDisk; HardDrive++)
     {
-      ProcessDisk(SCAN_PRIMARY2, HardDrive, foundPartitions[HardDrive]);
+      /* skip to next drive if failed to get disk's parameters */
+      if (!driveParam[HardDrive].driveno) continue; 
+
+      ProcessDisk(SCAN_PRIMARY2, foundPartitions[HardDrive], &(driveParam[HardDrive]));
     }
   }
   else
@@ -1336,33 +1372,35 @@ void ReadAllPartitionTables(void)
     /* Process primary partition table   1 partition only      */
     for (HardDrive = 0; HardDrive < nHardDisk; HardDrive++)
     {
-      struct DriveParamS driveParam;
-      if (LBA_Get_Drive_Parameters(HardDrive, &driveParam) &&
-          driveParam.driveno == bootdrv)
+      /* if booted from hard drive, make booted drive 1st (C:) */
+      if ((bootdrv >= 0x80) && (driveParam[HardDrive].driveno == bootdrv))
       {
         foundPartitions[HardDrive] =
-          ProcessDisk(SCAN_PRIMARYBOOT, HardDrive, 0);
+          ProcessDisk(SCAN_PRIMARYBOOT, 0, &(driveParam[HardDrive]));
         break;
       }
     }
 
     for (HardDrive = 0; HardDrive < nHardDisk; HardDrive++)
     {
+      /* skip to next drive if failed to get disk's parameters */
+      if (!driveParam[HardDrive].driveno) continue; 
+      
       if (foundPartitions[HardDrive] == 0)
       {
         foundPartitions[HardDrive] =
-          ProcessDisk(SCAN_PRIMARYBOOT, HardDrive, 0);
+          ProcessDisk(SCAN_PRIMARYBOOT, 0, &(driveParam[HardDrive]));
 
         if (foundPartitions[HardDrive] == 0)
           foundPartitions[HardDrive] =
-            ProcessDisk(SCAN_PRIMARY, HardDrive, 0);
+            ProcessDisk(SCAN_PRIMARY, 0, &(driveParam[HardDrive]));
       }
 
       /* Process extended partition table                      */
-      ProcessDisk(SCAN_EXTENDED, HardDrive, 0);
+      ProcessDisk(SCAN_EXTENDED, 0, &(driveParam[HardDrive]));
 
       /* Process primary a 2nd time */
-      ProcessDisk(SCAN_PRIMARY2, HardDrive, foundPartitions[HardDrive]);
+      ProcessDisk(SCAN_PRIMARY2, foundPartitions[HardDrive], &(driveParam[HardDrive]));
     }
   }
 }
