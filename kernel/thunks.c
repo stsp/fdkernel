@@ -211,6 +211,9 @@ void do_abort(const char *file, int line)
 
 void FdppInit(struct fdpp_api *api)
 {
+
+  dosobj_init();
+exit(0);
     fdpp = api;
     api_calls = &api->thunks;
 }

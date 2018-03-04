@@ -14,6 +14,7 @@ void dosobj_init(void)
 {
     const int size = 512;
     void FAR *fa = DynAlloc("dosobj", 1, size);
+return;
     void *ptr = resolve_segoff(GET_FAR(fa));
 
     sminit(&pool, ptr, size);

@@ -56,7 +56,12 @@ extern struct DynS FAR ASM Dyn;
 
 void FAR *DynAlloc(const char *what, unsigned num, unsigned size)
 {
+  if (size != 512)
+    printf("TEST FAILED! size=%i\n", size);
+  else
+    printf("TEST PASSED! size=%i\n", size);
   void FAR *now;
+  return now;
   unsigned total = num * size;
   struct DynS FAR *Dynp = MK_FP(FP_SEG(LoL), FP_OFF(__ASMADDR(Dyn)));
 
