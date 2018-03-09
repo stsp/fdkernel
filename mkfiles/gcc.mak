@@ -17,7 +17,7 @@ endif
 
 TARGET=KMS
 
-ALLCFLAGS += -iquote ../hdr $(TARGETOPT) -Wall -fpic -O2 \
+ALLCFLAGS += -iquote ../hdr $(TARGETOPT) -Wall -fpic -Os \
     -ggdb3 -fno-strict-aliasing -Wno-format-invalid-specifier
 
 INITCFLAGS=$(ALLCFLAGS)
