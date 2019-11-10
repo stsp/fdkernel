@@ -28,6 +28,7 @@
 
 #include "portab.h"
 #include "globals.h"
+#include "debug.h"
 
 #ifdef VERSION_STRINGS
 static BYTE *RcsId =
@@ -559,6 +560,8 @@ COUNT DosExeLoader(BYTE FAR * namep, exec_blk * exp, COUNT mode, COUNT fd)
   {
     UWORD image_size;
 
+    TaskDbgPrintf(("DosExeLoader - %S\n", namep));
+    
     /* compute image size by removing the offset from the   */
     /* number pages scaled to bytes plus the remainder and  */
     /* the psp                                              */
@@ -626,8 +629,12 @@ COUNT DosExeLoader(BYTE FAR * namep, exec_blk * exp, COUNT mode, COUNT fd)
         mem_access_mode = orig_mem_access; /* restore old situation */
         DosUmbLink(UMBstate);     /* restore link state */
       }
-      if (rc != SUCCESS)
+      
+      if (rc != SUCCESS) 
+      {
+        TaskDbgPrintf(("DosExeLoader Error %u\n"));
         return rc;
+      }
       
       mode &= 0x7f; /* forget about high loading from now on */
       
@@ -764,6 +771,8 @@ COUNT DosExec(COUNT mode, exec_blk FAR * ep, BYTE FAR * lp)
 {
   COUNT rc;
   COUNT fd;
+  
+  TaskDbgPrintf(("DosExec [%S]\n", lp));
 
   if ((mode & 0x7f) > 3 || (mode & 0x7f) == 2)
     return DE_INVLDFMT; 
@@ -774,18 +783,22 @@ COUNT DosExec(COUNT mode, exec_blk FAR * ep, BYTE FAR * lp)
   if (IsDevice(lp) ||        /* we don't want to execute C:>NUL */
       (fd = (short)DosOpenSft(lp, O_LEGACY | O_OPEN | O_RDONLY, 0)) < 0)
   {
+    TaskDbgPrintf(("Error, tried to execute a device!\n"));
     return DE_FILENOTFND;
   }
   
+  TaskDbgPrintf(("Reading executable header is COM or EXE?\n"));
   rc = (int)DosRWSft(fd, sizeof(exe_header), (BYTE FAR *)&ExeHeader, XFR_READ);
 
   if (rc == sizeof(exe_header) &&
       (ExeHeader.exSignature == MAGIC || ExeHeader.exSignature == OLD_MAGIC))
   {
+    TaskDbgPrintf(("Using EXE loader\n"));
     rc = DosExeLoader(lp, &TempExeBlock, mode, fd);
   }
   else if (rc != 0)
   {
+    TaskDbgPrintf(("Using COM loader\n"));
     rc = DosComLoader(lp, &TempExeBlock, mode, fd);
   }
 
@@ -794,6 +807,8 @@ COUNT DosExec(COUNT mode, exec_blk FAR * ep, BYTE FAR * lp)
   if (mode == LOAD && rc == SUCCESS)
     fmemcpy(ep, &TempExeBlock, sizeof(exec_blk));
 
+  TaskDbgPrintf(("DosExec = %u\n", rc));
+  
   return rc;
 }
 
