@@ -29,12 +29,13 @@
 ;
 
                 %include "segs.inc"
+                %include "stacks.inc"
                 %include "ludivmul.inc"
 
 
 segment PSP
 
-                extern  _ReqPktPtr:wrt LGROUP
+                extern  _ReqPktPtr
 
 STACK_SIZE      equ     384/2           ; stack allocated in words
 
@@ -42,7 +43,9 @@ STACK_SIZE      equ     384/2           ; stack allocated in words
 ; KERNEL BEGINS HERE, i.e. this is byte 0 of KERNEL.SYS
 ;************************************************************       
 
+%ifidn __OUTPUT_FORMAT__, obj
 ..start:
+%endif
 entry:  
                 jmp short realentry
 
@@ -103,8 +106,8 @@ realentry:                              ; execution continues here
                 pop bx
                 pop ax
 
-                jmp     far kernel_start
-beyond_entry:   resb    256-(beyond_entry-entry)
+                jmp     IGROUP:kernel_start
+beyond_entry:   times   256-(beyond_entry-entry) db 0
                                         ; scratch area for data (DOS_PSP)
 
 segment INIT_TEXT
@@ -125,31 +128,31 @@ kernel_start:
                 popf
                 pop bx
 
-                mov     ax,seg init_tos
+                mov     ax,I_GROUP
                 cli
                 mov     ss,ax
                 mov     sp,init_tos
                 int     12h             ; move init text+data to higher memory
                 mov     cl,6
                 shl     ax,cl           ; convert kb to para
-                mov     dx,15 + init_end wrt INIT_TEXT
+                mov     dx,15 + INITSIZE
                 mov     cl,4
                 shr     dx,cl
                 sub     ax,dx
                 mov     es,ax
-                mov     dx,__INIT_DATA_START wrt INIT_TEXT ; para aligned
+                mov     dx,INITTEXTSIZE ; para aligned
                 shr     dx,cl
                 add     ax,dx
                 mov     ss,ax           ; set SS to init data segment
                 sti                     ; now enable them
                 mov     ax,cs
-                mov     dx,__InitTextStart wrt HMA_TEXT    ; para aligned
+                mov     dx,__HMATextEnd ; para aligned
                 shr     dx,cl
 %ifdef WATCOM
                 add     ax,dx
 %endif
                 mov     ds,ax
-                mov     si,-2 + init_end wrt INIT_TEXT     ; word aligned
+                mov     si,-2 + INITSIZE; word aligned
                 lea     cx,[si+2]
                 mov     di,si
                 shr     cx,1
@@ -163,7 +166,7 @@ kernel_start:
                 sub     ax,dx
                 mov     es,ax           ; es = new HMA_TEXT
 
-                mov     si,-2 + __InitTextStart wrt HMA_TEXT
+                mov     si,-2 + __HMATextEnd
                 lea     cx,[si+2]
                 mov     di,si
                 shr     cx,1
@@ -289,7 +292,7 @@ segment CONST
                 global  _nul_strtgy
                 extern GenStrategy
 _nul_strtgy:
-                jmp far GenStrategy
+                jmp LGROUP:GenStrategy
 
                 ;
                 ; NUL device interrupt
@@ -389,7 +392,7 @@ _sfthead        dd      0               ; 0004 System File Table head
                 global  _clock
 _clock          dd      0               ; 0008 CLOCK$ device
                 global  _syscon
-_syscon         dw      _con_dev,seg _con_dev   ; 000c console device
+_syscon         dw      _con_dev,LGROUP ; 000c console device
                 global  _maxsecsize
 _maxsecsize     dw      512             ; 0010 maximum bytes/sector of any block device
                 global  _inforecptr
@@ -409,8 +412,8 @@ _lastdrive      db      0               ; 0021 value of last drive
                                         ;      ie max logical drives, should match # of CDSs
                 global  _nul_dev
 _nul_dev:           ; 0022 device chain root
-                extern  _con_dev:wrt LGROUP
-                dw      _con_dev, seg _con_dev
+                extern  _con_dev
+                dw      _con_dev, LGROUP
                                         ; next is con_dev at init time.  
                 dw      8004h           ; attributes = char device, NUL bit set
                 dw      _nul_strtgy
@@ -912,9 +915,32 @@ __U4D:
                 LDIVMODU
 %endif
 
-                resb 0xd0 - ($-begin_hma)
+%ifdef gcc
+%macro ULONG_HELPERS 1
+global %1udivsi3
+%1udivsi3:      call %1ldivmodu
+                ret 8
+
+global %1umodsi3
+%1umodsi3:      call %1ldivmodu
+                mov dx, cx
+                mov ax, bx
+                ret 8
+
+%1ldivmodu:     LDIVMODU
+
+global %1ashlsi3
+%1ashlsi3:      LSHLU
+
+global %1lshrsi3
+%1lshrsi3:      LSHRU
+%endmacro
+                ULONG_HELPERS ___
+%endif
+
+                times 0xd0 - ($-begin_hma) db 0
                 ; reserve space for far jump to cp/m routine
-                resb 5
+                times 5 db 0
 
 ;End of HMA segment                
 segment HMA_TEXT_END
@@ -926,7 +952,7 @@ __HMATextEnd:                   ; and c version
 ; The default stack (_TEXT:0) will overwrite the data area, so I create a dummy
 ; stack here to ease debugging. -- ror4
 
-segment _STACK  class=STACK stack
+segment _STACK  class(STACK) nobits stack
 
 
 
@@ -1099,7 +1125,7 @@ forceEnableA20retry:
 ;   ok, we have to enable A20 )at least seems so
 ;
 
-    call far _ENABLEA20
+    call DGROUP:_ENABLEA20
     
     jmp short forceEnableA20retry
     
@@ -1128,7 +1154,7 @@ _ExecUserDisableA20:
     je noNeedToDisable
 NeedToDisable:        
     push ax 
-    call far _DISABLEA20
+    call DGROUP:_DISABLEA20
     pop ax
 noNeedToDisable:
     iret        
@@ -1155,3 +1181,7 @@ _TEXT_DGROUP dw DGROUP
 segment INIT_TEXT
                 global _INIT_DGROUP
 _INIT_DGROUP dw DGROUP
+
+%ifdef gcc
+                ULONG_HELPERS _init_
+%endif

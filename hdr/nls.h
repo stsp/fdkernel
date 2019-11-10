@@ -403,7 +403,7 @@ struct nlsExtCntryInfo {
                                    0: 12 hours (append AM/PM)
                                    1: 24 houres
                                  */
-    VOID(FAR * upCaseFct) (VOID);       /* far call to a function upcasing the
+  intvec upCaseFct;             /* far call to a function upcasing the
                                            character in register AL */
   char dataSep[2];              /* ASCIZ of separator in data records */
 };
@@ -430,7 +430,8 @@ struct nlsPackage {             /* the contents of one chain item of the
   UWORD yeschar;                /* yes / no character DOS-65-23 */
   UWORD nochar;
   unsigned numSubfct;           /* number of supported sub-functions */
-  struct nlsPointer nlsPointers[1];     /* grows dynamically */
+  struct nlsPointer nlsPointers[5];     /* may grow dynamically */
+  struct nlsExtCntryInfo nlsExt;
 };
 
 struct nlsDBCS {                /* The internal structure is unknown to me */
@@ -473,20 +474,23 @@ struct nlsInfoBlock {           /* This block contains all information
                                    maybe tweaked by NLSFUNC */
   UWORD sysCodePage;            /* system code page */
   unsigned flags;               /* implementation flags */
+#ifdef __GNUC__
+  /* need to initialize using explicit segment/offset */
+  union {
+    struct { struct nlsPackage *off; char *seg; };
+    struct nlsPackage FAR *p;
+  } actPkg, chain;
+  #define actPkg actPkg.p
+  #define chain chain.p
+#else
   struct nlsPackage FAR *actPkg;        /* current NLS package */
   struct nlsPackage FAR *chain; /* first item of info chain --
                                    hardcoded U.S.A./CP437 */
+#endif
 };
 
 extern struct nlsInfoBlock ASM nlsInfo;
-extern struct nlsPackage      FAR ASM nlsPackageHardcoded;
-        /* These are the "must have" tables within the hard coded NLS pkg */
-extern struct nlsFnamTerm     FAR ASM nlsFnameTermHardcoded;
-extern struct nlsDBCS         FAR ASM nlsDBCSHardcoded;
-extern struct nlsCharTbl      FAR ASM nlsUpcaseHardcoded;
-extern struct nlsCharTbl      FAR ASM nlsFUpcaseHardcoded;
-extern struct nlsCharTbl      FAR ASM nlsCollHardcoded;
-extern struct nlsExtCntryInfo FAR ASM nlsCntryInfoHardcoded;
+extern struct nlsPackage      DOSFAR ASM nlsPackageHardcoded;
 extern BYTE FAR hcTablesStart[], hcTablesEnd[];
 
 /***********************************************************************

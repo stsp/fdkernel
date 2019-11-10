@@ -51,16 +51,25 @@
 ; destroys:
 ;   flags
 ;
+%ifdef STDCALL
+	push bp
+	mov bp, sp
+	mov ax, [bp+6]
+	mov dx, [bp+8]
+	mov bx, [bp+10]
+	mov cx, [bp+12]
+	pop bp
+%endif
 
-	test    cx, cx             ; divisor > 2^32-1 ?
-	jnz     %%big_divisor      ; yes, divisor > 32^32-1
-	cmp     dx, bx             ; only one division needed ? (ecx = 0)
+	test    cx, cx             ; divisor > 2^16-1 ?
+	jnz     %%big_divisor      ; yes, divisor > 2^16-1
+	cmp     dx, bx             ; only one division needed ? (cx = 0)
 	jb      %%one_div          ; yes, one division sufficient
 
 
 	xchg    cx, ax             ; save dividend-lo in cx, ax=0
 	xchg    ax, dx             ; get dividend-hi in ax, dx=0
-	div     bx                 ; quotient-hi in eax
+	div     bx                 ; quotient-hi in ax
 	xchg    ax, cx             ; cx = quotient-hi, ax =dividend-lo
 
 %%one_div:    
@@ -76,37 +85,57 @@
 	push    dx                 ; save
 	push    ax                 ;  dividend
 	mov     si, bx             ; divisor now in
-	mov     di, cx             ;  di:bx and cx:si
+	mov     di, cx             ;  di:si and cx:bx
 %%shift_loop:
 	shr     dx, 1              ; shift both
-	rcr     ax, 1              ;  divisor and
-	shr     di, 1              ;   and dividend
+	rcr     ax, 1              ;  dividend
+	shr     cx, 1              ;   and divisor
 	rcr     bx, 1              ;    right by 1 bit
         jnz     %%shift_loop       ;     loop if di non-zero (rcr does not touch ZF)
-	mov     di, cx             ; restore original divisor (di:si)
-	div     bx                 ; compute quotient
+	div     bx                 ; compute quotient dx:ax>>x / cx:bx>>x (stored in ax; remainder in dx not used)
 	pop     bx                 ; get dividend lo-word
 	mov     cx, ax             ; save quotient
         mul     di                 ; quotient * divisor hi-word (low only)
-	push	di		   ; save divisor hi-word
-        xchg    ax, di             ; save in di
+	pop     dx                 ; dividend high
+	sub     dx,ax              ; dividend high - divisor high * quotient, no overflow (carry/borrow) possible here
+	push    dx                 ; save dividend high
         mov     ax, cx             ; ax=quotient
 	mul     si                 ; quotient * divisor lo-word
-	add     dx, di             ; dx:ax = quotient * divisor
-	pop	di		   ; restore divisor hi-word
-	sub     bx, ax             ; dividend-lo - (quot.*divisor)-lo
+	sub     bx, ax             ; dividend-lo - (quot.*divisor-lo)-lo
 	mov     ax, cx             ; get quotient
 	pop     cx                 ; restore dividend hi-word
-	sbb     cx, dx             ; subtract divisor * quot. from dividend
+	sbb     cx, dx             ; subtract (divisor-lo * quot.)-hi from dividend-hi
 	sbb     dx, dx             ; 0 if remainder > 0, else FFFFFFFFh
 	and     si, dx             ; nothing to add
-	and     di, dx             ;  back if remainder positive
-	add     bx, si             ; correct remaider
-	adc     cx, di             ;  and quotient if
-	add     ax, dx             ;   necessary
-	xor     dx, dx             ; clear hi-word of quot (ax<=FFFFFFFFh)
+	and     di, dx             ;  back if remainder positive di:si := di:si(cx:bx) & dx:dx
+	add     bx, si             ; correct remainder           cx:bx += di:si
+	adc     cx, di             ;  and
+	add     ax, dx             ;   quotient if necessary           ax += dx
+	xor     dx, dx             ; clear hi-word of quot (ax<=FFFFh) dx := 0
 	pop     di                 ; restore temp  
 	pop     si                 ;  variables
 	ret
 
-%endmacro   
+%endmacro
+
+%macro LSHLU 0
+	pop bx
+	popargs {dx,ax},cx
+	push bx
+	jcxz %%ret
+%%loop:	shl ax, 1
+	rcl dx, 1
+	loop %%loop
+%%ret:	ret
+%endmacro
+
+%macro LSHRU 0
+	pop bx
+	popargs {dx,ax},cx
+	push bx
+	jcxz %%ret
+%%loop:	shr dx, 1
+	rcr ax, 1
+	loop %%loop
+%%ret:	ret
+%endmacro

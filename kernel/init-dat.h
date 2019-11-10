@@ -1,3 +1,6 @@
+#undef DOSFAR
+#undef DOSTEXTFAR
+
 /* Included by initialisation functions */
 
 #if _MSC_VER != 0
@@ -16,6 +19,11 @@ extern __segment DosTextSeg;
 #define DOSTEXTFAR FAR
 
 #elif defined(__WATCOMC__)
+
+#define DOSFAR FAR
+#define DOSTEXTFAR FAR
+
+#elif defined(__GNUC__)
 
 #define DOSFAR FAR
 #define DOSTEXTFAR FAR

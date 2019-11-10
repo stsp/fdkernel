@@ -30,7 +30,11 @@
 #include "debug.h"
 
 #ifdef FORSYS
+#ifdef __GNUC__
+#include <unistd.h>
+#else
 #include <io.h>
+#endif
 #include <stdarg.h>
 #endif
 
@@ -120,6 +124,8 @@ void put_console(int c)
   else
 #endif
     int29(c);
+#elif defined(__GNUC__)
+  asm volatile("int $0x29" : : "a"(c) : "bx");
 #elif defined(I86)
   __asm
   {
@@ -262,7 +268,8 @@ int VA_CDECL sprintf(char * buff, CONST char * fmt, ...)
 STATIC void vprintf (CONST char * fmt, va_list arg )
 {
   int base;
-  BYTE s[11], FAR * p;
+  BYTE s[11];
+  BYTE FAR * p;
   int size;
   unsigned char flags;
 

@@ -15,8 +15,8 @@ XNASM=nasm
 #**********************************************************************
 #- where is the BASE dir of your compiler(s) ??
 #**********************************************************************
-						
-# if WATCOM maybe you need to set your WATCOM environment variables 
+
+# if WATCOM maybe you need to set your WATCOM environment variables
 # and path
 ifndef WATCOM
   WATCOM=$(HOME)/watcom
@@ -28,7 +28,7 @@ endif
 #**********************************************************************
 XUPX=upx --8086 --best
 
-# or use 
+# or use
 #unexport XUPX
 # without the # if you don't want to use it
 
@@ -52,12 +52,12 @@ XUPX=upx --8086 --best
 # select your default target: required CPU and what FAT system to support
 #*********************************************************************
 
-XCPU=86
+# XCPU=86
 # XCPU=186
-# XCPU=386
+XCPU=386
 
-XFAT=16
-# XFAT=32
+# XFAT=16
+XFAT=32
 
 # Give extra compiler DEFINE flags here
 # such as -DDEBUG : extra DEBUG output

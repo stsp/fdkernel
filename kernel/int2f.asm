@@ -30,7 +30,8 @@
         %include "stacks.inc"
 
 segment	HMA_TEXT
-            extern _cu_psp:wrt DGROUP
+            extern _cu_psp
+            extern _HaltCpuWhileIdle
             extern _syscall_MUX14
 
             extern _DGROUP_
@@ -114,7 +115,7 @@ Int2f?iret:
 ;    0x02 - forward device driver request (in ES:BX) to DOS disk driver
 ;    0x03 - return start of DDT linked list in DS:DI [getddt()]
 DriverSysCal:
-                extern  _Dyn:wrt DGROUP
+                extern  _Dyn
                 cmp     al, 3
                 jne     Int2f?iret
                 mov     ds, [cs:_DGROUP_]
@@ -246,10 +247,7 @@ SHARE_CHECK:
 SHARE_OPEN_CHECK:
 		mov	es, si		; save si
 		pop	ax		; return address
-		pop	dx		; sharemode;
-		pop	cx		; openmode;
-		pop	bx		; pspseg;
-		pop	si		; filename
+		popargs	si,bx,cx,dx	; filename,pspseg,openmode,sharemode;
 		push	ax		; return address
 		mov	ax, 0x10a0
 		int	0x2f	     	; returns ax
@@ -294,12 +292,13 @@ share_common:
 		mov	bp, sp
 		push	si
 		push	di
-		mov	bx, [bp + 16]	; pspseg
-		mov	cx, [bp + 14]	; fileno
-		mov	si, [bp + 12]	; high word of ofs
-		mov	di, [bp + 10]	; low word of ofs
-		les	dx, [bp + 6]	; len
-		or	ax, [bp + 4]	; allowcriter/unlock
+arg pspseg, fileno, {ofs,4}, {len,4}, allowcriter
+		mov	bx, [.pspseg] ; pspseg
+		mov	cx, [.fileno] ; fileno
+		mov	si, [.ofs+2] ; high word of ofs
+		mov	di, [.ofs] ; low word of ofs
+		les	dx, [.len] ; len
+		or	ax, [.allowcriter] ; allowcriter/unlock
 		int	0x2f
 		pop	di
 		pop	si
@@ -356,10 +355,8 @@ remote_lock_unlock:
                 global NETWORK_REDIRECTOR_MX
 NETWORK_REDIRECTOR_MX:
                 pop     bx             ; ret address
-                pop     cx             ; stack value (arg); cx in remote_rw
-                pop     dx             ; off s
-                pop     es             ; seg s
-                pop     ax             ; cmd (ax)
+                popargs ax,{es,dx},cx  ; cmd (ax), seg:off s
+                                       ; stack value (arg); cx in remote_rw
                 push    bx             ; ret address
 call_int2f:
                 push    bp
@@ -464,7 +461,7 @@ int2f_restore_ds:
 ; extern UWORD ASMPASCAL call_nls(UWORD bp, UWORD FAR *buf,
 ;	UWORD subfct, UWORD cp, UWORD cntry, UWORD bufsize);
 
-		extern _nlsInfo:wrt DGROUP
+		extern _nlsInfo
 		global CALL_NLS
 CALL_NLS:
 		pop	es		; ret addr
@@ -530,7 +527,8 @@ FLOPPY_CHANGE:
 segment INIT_TEXT
                 ; int ASMPASCAL UMB_get_largest(void FAR * driverAddress,
                 ;                UCOUNT * seg, UCOUNT * size);
-                global UMB_GET_LARGEST
+arg {driverAddress,4}, argseg, size
+		global UMB_GET_LARGEST
                 
 UMB_GET_LARGEST:
                 push    bp
@@ -538,7 +536,7 @@ UMB_GET_LARGEST:
 
                 mov     dx,0xffff       ; go for broke!
                 mov     ax,1000h        ; get the UMBs
-                call    far [bp+8]      ; Call the driver
+                call    far [.driverAddress] ; Call the driver
 
 ;
 ;       bl = 0xB0 and  ax = 0 so do it again.
@@ -550,7 +548,7 @@ UMB_GET_LARGEST:
                 je      umbt_error
 
                 mov     ax,1000h        ; dx set with largest size
-                call    far [bp+8]      ; Call the driver
+                call    far [.driverAddress] ; Call the driver
 
                 cmp     ax,1
                 jne     umbt_error
@@ -558,10 +556,10 @@ UMB_GET_LARGEST:
                                         ; and the size
 
                 mov 	cx,bx           ; *seg = segment
-                mov 	bx, [bp+6]
+                mov 	bx, [.argseg]
                 mov 	[bx],cx
 
-                mov 	bx, [bp+4]      ; *size = size
+                mov 	bx, [.size]      ; *size = size
                 mov 	[bx],dx
 
 umbt_ret:

@@ -66,8 +66,13 @@ struct nlsInfoBlock ASM nlsInfo = {
 #ifdef NLS_REORDER_POINTERS
       | NLS_CODE_REORDER_POINTERS
 #endif
+#ifdef __GNUC__
+      , {.seg=DosDataSeg, .off=&nlsPackageHardcoded} /* hardcoded first package */
+      , {.seg=DosDataSeg, .off=&nlsPackageHardcoded} /* first item in chain */
+#else
       , &nlsPackageHardcoded    /* hardcoded first package */
       , &nlsPackageHardcoded    /* first item in chain */
+#endif
 };
 
         /* getTableX return the pointer to the X'th table; X==subfct */
@@ -93,6 +98,9 @@ struct nlsInfoBlock ASM nlsInfo = {
  ***** MUX calling functions ****************************************
  ********************************************************************/
 
+#ifdef __GNUC__
+#define call_nls(a,b,c,d,e,f) call_nls(f,e,d,c,b,a)
+#endif
 extern long ASMPASCAL call_nls(UWORD, VOID FAR *, UWORD, UWORD, UWORD, UWORD);
 /*== DS:SI _always_ points to global NLS info structure <-> no
  * subfct can use these registers for anything different. ==ska*/

@@ -9,9 +9,11 @@ TARGETOPT=-1-
 
 !if $(XCPU) == 186
 TARGETOPT=-1
+ALLCFLAGS=$(ALLCFLAGS) -DI186
 !endif
 !if $(XCPU) == 386
 TARGETOPT=-3
+ALLCFLAGS=$(ALLCFLAGS) -DI386
 !endif
 
 !if $(XFAT) == 32
@@ -45,7 +47,7 @@ CLC=$(CL) $(CFLAGSC) -I$(INCLUDEPATH)
 TARGET=$(TARGET)$(XCPU)$(XFAT)
 
 .asm.obj :
-	$(NASM) -D$(COMPILER) $(NASMFLAGS) -f obj $*.asm
+	$(NASM) -D$(COMPILER) -f obj $(NASMFLAGS) $*.asm
 
 #               *Implicit Rules*
 .c.obj :

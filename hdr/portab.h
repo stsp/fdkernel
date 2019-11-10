@@ -142,8 +142,43 @@ unsigned short getSS(void);
 #define MC68K
 
 #elif defined(__GNUC__)
+
+#ifdef __FAR
+#define I86
+#define __int__(intno) asm volatile("int " ## #intno)
+static inline void disable(void)
+{
+  asm volatile("cli");
+}
+static inline void enable(void)
+{
+  asm volatile("sti");
+}
+#define far __far
+#define CDECL __attribute__((cdecl))
+#define VA_CDECL
+#define PASCAL
+
+#define _CS getCS()
+static inline unsigned short getCS(void)
+{
+  unsigned short ret;
+  asm volatile("mov %%cs, %0" : "=r"(ret));
+  return ret;
+}
+
+#define _SS getSS()
+static inline unsigned short getSS(void)
+{
+  unsigned short ret;
+  asm volatile("mov %%ss, %0" : "=r"(ret));
+  return ret;
+}
+extern char DosDataSeg[];
+#else
 /* for warnings only ! */
 #define MC68K
+#endif
 
 #else
 #error Unknown compiler
@@ -199,7 +234,16 @@ typedef unsigned       size_t;
               as 'ASMCFUNC', and is (and will be ?-) cdecl */
 #define ASMCFUNC CDECL
 #define ASMPASCAL PASCAL
+#if defined(__GNUC__)
+#define ASM
+#else
 #define ASM ASMCFUNC
+#endif
+
+/* variables that can be near or far: redefined in init-dat.h */
+#define DOSFAR
+#define DOSTEXTFAR
+
 /*                                                              */
 /* Boolean type & definitions of TRUE and FALSE boolean values  */
 /*                                                              */
@@ -251,7 +295,7 @@ typedef unsigned short CLUSTER;
 #endif
 typedef unsigned short UNICODE;
 
-#if defined(STATICS) || defined(__WATCOMC__)
+#if defined(STATICS) || defined(__WATCOMC__) || defined(__GNUC__)
 #define STATIC static		 /* local calls inside module */
 #else
 #define STATIC
@@ -299,7 +343,11 @@ typedef signed long LONG;
 #define FP_SEG(fp)            ((unsigned)((ULONG)(VOID FAR *)(fp)>>16))
 #endif
 
+#if defined(__GNUC__) && defined(__BUILTIN_IA16_FP_OFF)
+#define FP_OFF(fp)            __builtin_ia16_FP_OFF(fp)
+#else
 #define FP_OFF(fp)            ((unsigned)(fp))
+#endif
 
 #endif
 #endif
@@ -310,7 +358,11 @@ typedef signed long LONG;
 #define FP_OFF(fp)             ((size_t)(fp))
 #endif
 
+#if defined(__GNUC__) && defined(__FAR)
+typedef VOID FAR *intvec;
+#else
 typedef VOID (FAR ASMCFUNC * intvec) (void);
+#endif
 
 #define MK_PTR(type,seg,ofs) ((type FAR*) MK_FP (seg, ofs))
 #if __TURBOC__ > 0x202

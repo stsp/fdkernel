@@ -16,12 +16,12 @@
 #include "tail.h"
 #include "process.h"
 #include "pcb.h"
-#include "nls.h"
 #include "buffer.h"
 #include "dcb.h"
 #include "lol.h"
 
 #include "init-dat.h"
+#include "nls.h"
 
 #include "kconfig.h"
 
@@ -202,8 +202,6 @@ VOID ASMCFUNC init_stacks(VOID FAR * stack_base, COUNT nStacks,
                           WORD stackSize);
 
 /* inthndlr.c */
-VOID ASMCFUNC FAR int21_entry(iregs UserRegs);
-VOID ASMCFUNC int21_service(iregs far * r);
 VOID ASMCFUNC FAR int0_handler(void);
 VOID ASMCFUNC FAR int6_handler(void);
 VOID ASMCFUNC FAR int13_handler(void);
@@ -223,7 +221,11 @@ VOID ASMCFUNC FAR int2f_handler(void);
 VOID ASMCFUNC FAR cpm_entry(void);
 
 /* kernel.asm */
+#ifdef __GNUC__
+VOID ASMCFUNC init_call_p_0(struct config FAR *Config) FAR __attribute__((noreturn));
+#else
 VOID ASMCFUNC FAR init_call_p_0(struct config FAR *Config); /* P_0, actually */
+#endif
 
 /* main.c */
 VOID ASMCFUNC FreeDOSmain(void);
@@ -261,16 +263,17 @@ extern struct dhdr DOSTEXTFAR ASM blk_dev; /* Block device (Disk) driver        
 extern struct buffer FAR *DOSFAR firstAvailableBuf; /* first 'available' buffer   */
 extern struct lol ASM FAR DATASTART;
 
-extern BYTE DOSFAR ASM _HMATextAvailable,    /* first byte of available CODE area    */
-  FAR ASM _HMATextStart[],          /* first byte of HMAable CODE area      */
-  FAR ASM _HMATextEnd[], DOSFAR ASM break_ena;  /* break enabled flag                   */
-extern BYTE DOSFAR ASM _InitTextStart[],     /* first available byte of ram          */
-  DOSFAR ASM _InitTextEnd[],
-  DOSFAR ReturnAnyDosVersionExpected,
-  DOSFAR ASM HaltCpuWhileIdle;
+extern BYTE DOSFAR ASM _HMATextAvailable;    /* first byte of available CODE area    */
+extern BYTE FAR ASM _HMATextStart[];          /* first byte of HMAable CODE area      */
+extern BYTE FAR ASM _HMATextEnd[];
+extern BYTE DOSFAR ASM break_ena;  /* break enabled flag                   */
+extern BYTE DOSFAR ASM _InitTextStart[];     /* first available byte of ram          */
+extern BYTE DOSFAR ASM _InitTextEnd[];
+extern BYTE DOSFAR ASM ReturnAnyDosVersionExpected;
+extern BYTE DOSFAR ASM HaltCpuWhileIdle;
 
-extern BYTE FAR ASM internal_data[];
-extern unsigned char FAR ASM kbdType;
+extern BYTE DOSFAR ASM internal_data[];
+extern unsigned char DOSTEXTFAR ASM kbdType;
 
 extern struct {
   char  ThisIsAConstantOne;
@@ -278,7 +281,7 @@ extern struct {
   
   struct CountrySpecificInfo C;
   
-} FAR ASM nlsCountryInfoHardcoded;
+} DOSFAR ASM nlsCountryInfoHardcoded;
 
 /*
     data shared between DSK.C and INITDISK.C
@@ -313,13 +316,17 @@ struct RelocatedEntry {
   UWORD jmpSegment;
 };
 
-extern struct RelocationTable
-   DOSFAR ASM _HMARelocationTableStart[],
-   DOSFAR ASM _HMARelocationTableEnd[];
+extern struct RelocationTable DOSFAR ASM _HMARelocationTableStart[];
+extern struct RelocationTable DOSFAR ASM _HMARelocationTableEnd[];
 
 extern void FAR *DOSFAR ASM XMSDriverAddress;
+#ifdef __GNUC__
+extern VOID ASMPASCAL _EnableA20(VOID) FAR;
+extern VOID ASMPASCAL _DisableA20(VOID) FAR;
+#else
 extern VOID ASMPASCAL FAR _EnableA20(VOID);
 extern VOID ASMPASCAL FAR _DisableA20(VOID);
+#endif
 
 extern void FAR * ASMPASCAL DetectXMSDriver(VOID);
 extern int ASMPASCAL init_call_XMScall(void FAR * driverAddress, UWORD ax,

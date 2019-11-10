@@ -48,14 +48,18 @@
 #endif
 
 #include <stdlib.h>
+#ifndef __GNUC__
 #include <dos.h>
+#endif
 #include <ctype.h>
+#ifndef __GNUC__
 #include <fcntl.h>
 #include <sys/stat.h>
 #ifdef __TURBOC__
 #include <mem.h>
 #else
 #include <memory.h>
+#endif
 #endif
 #include <string.h>
 #ifdef __TURBOC__
@@ -91,7 +95,128 @@ extern int VA_CDECL sprintf(char * buff, CONST char * fmt, ...);
 
 #ifndef __WATCOMC__
 
+#ifdef __GNUC__
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+#define O_BINARY 0
+#define stricmp strcasecmp
+#define memicmp strncasecmp
+union REGS {
+  struct {
+    unsigned char al, ah, bl, bh, cl, ch, dl, dh;
+  } h;
+  struct {
+    unsigned short ax, bx, cx, dx, si, di, cflag;
+  } x;
+};
+struct SREGS {
+  unsigned short ds, es;
+};
+struct _diskfree_t {
+  unsigned short avail_clusters, sectors_per_cluster, bytes_per_sector;
+};
+
+int int86(int ivec, union REGS *in, union REGS *out)
+{
+  /* must save sp for int25/26 */
+  asm("mov %5, (1f+1); jmp 0f; 0:mov %%di, %%dx; mov %%sp, %%di;"
+      "1:int $0x00; mov %%di, %%sp; sbb %0, %0" :
+      "=r"(out->x.cflag),
+      "=a"(out->x.ax), "=b"(out->x.bx), "=c"(out->x.cx), "=d"(out->x.dx) :
+      "q"((unsigned char)ivec), "a"(in->x.ax), "b"(in->x.bx),
+      "c"(in->x.cx), "D"(in->x.dx), "S"(in->x.si) :
+      "cc", "memory");
+  return out->x.ax;
+}
+
+int intdos(union REGS *in, union REGS *out)
+{
+  return int86(0x21, in, out);
+}
+
+int intdosx(union REGS *in, union REGS *out, struct SREGS *s)
+{
+  asm("push %%ds; mov %%bx, %%ds; int $0x21; pop %%ds; sbb %0, %0":
+      "=r"(out->x.cflag), "=a"(out->x.ax) :
+      "a"(in->x.ax), "c"(in->x.cx), "d"(in->x.dx),
+      "D"(in->x.di), "S"(in->x.si), "b"(s->ds), "e"(s->es) :
+      "cc", "memory");
+  return out->x.ax;
+}
+
+unsigned _dos_allocmem(unsigned size, unsigned *seg)
+{
+  union REGS in, out;
+  in.h.ah = 0x48;
+  in.x.bx = size;
+  unsigned ret = intdos(&in, &out);
+  if (!out.x.cflag)
+  {
+    *seg = ret;
+    ret = 0;
+  }
+  return ret;
+}
+
+unsigned _dos_freemem(unsigned seg)
+{
+  union REGS in, out;
+  struct SREGS s;
+  in.h.ah = 0x49;
+  s.es = seg;
+  return intdosx(&in, &out, &s);
+}
+
+unsigned int _dos_getdiskfree(unsigned int drive,
+                              struct _diskfree_t *diskspace)
+{
+  union REGS in, out;
+  in.x.ax = 0x3600;
+  in.x.dx = drive;
+  unsigned ret = intdos(&in, &out);
+  diskspace->avail_clusters = out.x.bx;
+  diskspace->sectors_per_cluster = out.x.dx;
+  diskspace->bytes_per_sector = out.x.cx;
+  return ret;
+}
+
+long filelength(int fhandle)
+{
+  long ret = lseek(fhandle, 0, SEEK_END);
+  lseek(fhandle, 0, SEEK_SET);
+  return ret;
+}
+
+struct find_t {
+  char reserved[21];
+  unsigned char attrib;
+  unsigned short wr_time;
+  unsigned short wr_date;
+  unsigned long size;
+  char filename[13];
+};
+#define _A_NORMAL 0x00
+#define _A_HIDDEN 0x02
+#define _A_SYSTEM 0x04
+
+int _dos_findfirst(const char *file_name, unsigned int attr,
+                   struct find_t *find_tbuf)
+{
+  union REGS in, out;
+  in.h.ah = 0x4e;
+  in.x.dx = FP_OFF(file_name);
+  in.x.cx = attr;
+  intdos(&in, &out);
+  if (out.x.cflag)
+    return out.x.ax;
+  memcpy(find_tbuf, (void *)0x80, sizeof(*find_tbuf));
+  return 0;
+}
+#else
 #include <io.h>
+#endif
 
 /* returns current DOS drive, A=0, B=1,C=2, ... */
 #ifdef __TURBOC__
@@ -166,7 +291,9 @@ int write(int fd, const void *buf, unsigned count)
 }
 
 #define close _dos_close
+#endif
 
+#if defined(__WATCOMC__) || defined(__GNUC__)
 int stat(const char *file_name, struct stat *statbuf)
 {
   struct find_t find_tbuf;
@@ -176,7 +303,9 @@ int stat(const char *file_name, struct stat *statbuf)
   /* statbuf->st_attr = (ULONG)find_tbuf.attrib; */
   return ret;
 }
+#endif
 
+#ifdef __WATCOMC__
 /* WATCOM's getenv is case-insensitive which wastes a lot of space
    for our purposes. So here's a simple case-sensitive one */
 char *getenv(const char *name)
@@ -973,7 +1102,7 @@ void reset_drive(int DosDrive);
 #pragma aux reset_drive = \
       "push ds" \
       "inc dx" \
-      "mov ah, 0xd" \ 
+      "mov ah, 0xd" \
       "int 0x21" \
       "mov ah,0x32" \
       "int 0x21" \
@@ -999,7 +1128,7 @@ int generic_block_ioctl(unsigned drive, unsigned cx, unsigned char *par);
 
 #ifndef __TURBOC__
 
-int2526readwrite(int DosDrive, void *diskReadPacket, unsigned intno)
+int int2526readwrite(int DosDrive, void *diskReadPacket, unsigned intno)
 {
   union REGS regs;
 
@@ -1798,7 +1927,7 @@ BOOL copy(const BYTE *source, COUNT drive, const BYTE * filename)
   {
     ULONG filesize;
     UWORD theseg;
-    BYTE far *buffer, far *bufptr;
+    BYTE far *buffer; BYTE far *bufptr;
     UWORD offs;
     unsigned chunk_size;
     

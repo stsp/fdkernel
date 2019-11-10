@@ -802,8 +802,12 @@ STATIC void CheckContinueBootFromHarddisk(void)
   init_call_intr(0x13, &r);
 
   {
+#if __GNUC__
+    asm volatile("jmp $0,$0x7c00");
+#else
     void (far *reboot)(void) = (void (far*)(void)) MK_FP(0x0,0x7c00);
 
     (*reboot)();
+#endif
   }
 }
