@@ -378,6 +378,7 @@ STATIC WORD getbpb(ddt * pddt)
 
   pbpbarray->bpb_nbyte = getword(&DiskTransferBuffer[BT_BPB]);
 
+  /* if not a valid FAT boot sector, initialize to default BPB data */
   if (DiskTransferBuffer[0x1fe] != 0x55
       || DiskTransferBuffer[0x1ff] != 0xaa || pbpbarray->bpb_nbyte % 512)
   {
@@ -388,10 +389,7 @@ STATIC WORD getbpb(ddt * pddt)
 
   pddt->ddt_descflags &= ~DF_NOACCESS;  /* set drive to accessible */
 
-/*TE ~ 200 bytes*/
-
-  memcpy(pbpbarray, &DiskTransferBuffer[BT_BPB], sizeof(bpb));
-
+  
   /*?? */
   /*  2b is fat16 volume label. if memcmp, then offset 0x36.
      if (fstrncmp((BYTE *) & DiskTransferBuffer[0x36], "FAT16",5) == 0  ||
@@ -409,13 +407,17 @@ STATIC WORD getbpb(ddt * pddt)
     if (pbpbarray->bpb_nfsect == 0)
     {
       /* FAT32 boot sector */
+      memcpy(pbpbarray, &DiskTransferBuffer[BT_BPB], sizeof(bpb_fat_ext));
       fs = (struct FS_info *)&DiskTransferBuffer[0x43];
       /* Extended BPB signature, offset differs for FAT32 vs FAT12/16 */
       extended_BPB_signature = DiskTransferBuffer[0x42];
     }
     else
 #endif
+    {
+      memcpy(pbpbarray, &DiskTransferBuffer[BT_BPB], sizeof(bpb_fat_std));
       extended_BPB_signature = DiskTransferBuffer[0x26];
+    }
 
     /* 0x29 is usual signature value for serial#,vol label,& fstype; 
        0x28 older EBPB signature indicating only serial# is valid   */
@@ -438,14 +440,14 @@ STATIC WORD getbpb(ddt * pddt)
   }
 
 #ifdef DSK_DEBUG
-  printf("BPB_NBYTE     = %04x\n", pbpbarray->bpb_nbyte);
-  printf("BPB_NSECTOR   = %02x\n", pbpbarray->bpb_nsector);
-  printf("BPB_NRESERVED = %04x\n", pbpbarray->bpb_nreserved);
-  printf("BPB_NFAT      = %02x\n", pbpbarray->bpb_nfat);
-  printf("BPB_NDIRENT   = %04x\n", pbpbarray->bpb_ndirent);
-  printf("BPB_NSIZE     = %04x\n", pbpbarray->bpb_nsize);
-  printf("BPB_MDESC     = %02x\n", pbpbarray->bpb_mdesc);
-  printf("BPB_NFSECT    = %04x\n", pbpbarray->bpb_nfsect);
+  DebugPrintf(("BPB_NBYTE     = %04x\n", pbpbarray->bpb_nbyte));
+  DebugPrintf(("BPB_NSECTOR   = %02x\n", pbpbarray->bpb_nsector));
+  DebugPrintf(("BPB_NRESERVED = %04x\n", pbpbarray->bpb_nreserved));
+  DebugPrintf(("BPB_NFAT      = %02x\n", pbpbarray->bpb_nfat));
+  DebugPrintf(("BPB_NDIRENT   = %04x\n", pbpbarray->bpb_ndirent));
+  DebugPrintf(("BPB_NSIZE     = %04x\n", pbpbarray->bpb_nsize));
+  DebugPrintf(("BPB_MDESC     = %02x\n", pbpbarray->bpb_mdesc));
+  DebugPrintf(("BPB_NFSECT    = %04x\n", pbpbarray->bpb_nfsect));
 #endif
 
   count =
@@ -465,10 +467,25 @@ STATIC WORD getbpb(ddt * pddt)
   tmark(pddt);
 
 #ifdef DSK_DEBUG
-  printf("BPB_NSECS     = %04x\n", pbpbarray->bpb_nsecs);
-  printf("BPB_NHEADS    = %04x\n", pbpbarray->bpb_nheads);
-  printf("BPB_HIDDEN    = %08lx\n", pbpbarray->bpb_hidden);
-  printf("BPB_HUGE      = %08lx\n", pbpbarray->bpb_huge);
+  DebugPrintf(("BPB_NSECS     = %04x\n", pbpbarray->bpb_nsecs));
+  DebugPrintf(("BPB_NHEADS    = %04x\n", pbpbarray->bpb_nheads));
+  DebugPrintf(("BPB_HIDDEN    = %08lx\n", pbpbarray->bpb_hidden));
+  DebugPrintf(("BPB_HUGE      = %08lx\n", pbpbarray->bpb_huge));
+  
+#ifdef WITHFAT32
+  if (pbpbarray->bpb_nfsect == 0)
+  {
+    DebugPrintf(("FAT 32\n"));
+    DebugPrintf(("BPB_XNFSECT   = %08lx\n", ((bpb_fat_ext*)pbpbarray)->bpb_xnfsect));
+    DebugPrintf(("BPB_XFLAGS    = %04x\n", ((bpb_fat_ext*)pbpbarray)->bpb_xflags));
+    DebugPrintf(("BPB_XVER      = %04x\n", ((bpb_fat_ext*)pbpbarray)->bpb_xfsversion));
+    DebugPrintf(("BPB_XROOTCLST = %08lx\n", ((bpb_fat_ext*)pbpbarray)->bpb_xrootclst));
+    DebugPrintf(("BPB_XFSINFO   = %04x\n", ((bpb_fat_ext*)pbpbarray)->bpb_xfsinfosec));
+    DebugPrintf(("BPB_XBAKSEC   = %04x\n", ((bpb_fat_ext*)pbpbarray)->bpb_xbackupsec));
+  } else {
+    DebugPrintf(("FAT 12/16\n"));
+  }
+#endif
 #endif
 
   return 0;

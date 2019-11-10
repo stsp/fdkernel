@@ -232,7 +232,7 @@ typedef struct ddtstruct {
   UWORD ddt_ncyl;               /* number of cylinders
                                    (for partition only, if hard disk) */
   bpb ddt_defbpb;               /* BPB for default (highest) capacity supported */
-#ifdef WITHFAT32                /* part of BPB - verify size when FAT32 enabled */
+#ifdef WITHFAT32                /* part of BPB - extended BPB bytes */
   UBYTE ddt_reserved[sizeof(bpb_fat_ext)-sizeof(bpb_fat)];
 #else
   UBYTE ddt_reserved[sizeof(bpb_fat_std)-sizeof(bpb_fat)];  /* 6 bytes */
@@ -327,7 +327,7 @@ struct Access_info {
 typedef struct {
   BYTE bt_jump[3];              /* Boot Jump opcode (and NOP to pad)    */
   BYTE bt_oem[8];               /* OEM Name                             */
-  bpb bt_bpb;                   /* BPB for this media/device            */
+  bpb_fat_ext bt_bpb;           /* BPB for this media/device            */
   BYTE bt_drvno;                /* offset depends on size of BPB        */
   BYTE bt_reserv;
   BYTE bt_btid;
