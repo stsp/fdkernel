@@ -29,11 +29,8 @@
 
 #include "portab.h"
 #include "globals.h"
+#include "debug.h"
 
-#ifdef VERSION_STRINGS
-static BYTE *fatdirRcsId =
-    "$Id: fatdir.c 1561 2011-04-08 15:35:23Z bartoldeman $";
-#endif
 
 /* Description.
  *  Initialize a fnode so that it will point to the directory with 
@@ -160,6 +157,8 @@ COUNT dir_read(REG f_node_ptr fnp)
   REG UWORD secsize = fnp->f_dpb->dpb_secsize;
   unsigned sector;
   unsigned entry = fnp->f_dmp->dm_entry;
+  
+  FDirDbgPrintf(("dir_read: secsize=%u, entry=%u, cluster=%u\n", secsize, entry, fnp->f_dmp->dm_dircluster));
 
   /* can't have more than 65535 directory entries */
   if (entry >= 65535U)
@@ -218,6 +217,7 @@ COUNT dir_read(REG f_node_ptr fnp)
   /* and for efficiency, stop when we hit the first       */
   /* unused entry.                                        */
   /* either returns 1 or 0                                */
+  FDirDbgPrintf(("dir_read - %u\n", (fnp->f_dir.dir_name[0] != '\0')));
   return (fnp->f_dir.dir_name[0] != '\0');
 }
 

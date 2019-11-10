@@ -28,11 +28,8 @@
 
 #include "portab.h"
 #include "globals.h"
+#include "debug.h"
 
-#ifdef VERSION_STRING
-static BYTE *memmgrRcsId =
-    "$Id: memmgr.c 1338 2007-07-20 20:52:33Z mceric $";
-#endif
 
 #define nxtMCBsize(mcb,size) MK_FP(FP_SEG(mcb) + (size) + 1, FP_OFF(mcb))
 #define nxtMCB(mcb) nxtMCBsize((mcb), (mcb)->m_size)
@@ -115,6 +112,9 @@ COUNT DosMemAlloc(UWORD size, COUNT mode, seg *para, UWORD *asize)
   REG mcb FAR *p;
   mcb FAR *foundSeg;
   mcb FAR *biggestSeg;
+  
+  DebugPrintf(("DosMemAlloc(size=%u, mode=%u, seg=%04x)\n", size, mode, (unsigned)para));
+  
   /* Initialize                                           */
 
 searchAgain:

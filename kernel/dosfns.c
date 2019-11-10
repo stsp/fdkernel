@@ -27,13 +27,9 @@
 /****************************************************************/
 
 #include "portab.h"
-
-#ifdef VERSION_STRINGS
-static BYTE *dosfnsRcsId =
-    "$Id: dosfns.c 1564 2011-04-08 18:27:48Z bartoldeman $";
-#endif
-
 #include "globals.h"
+#include "debug.h"
+
 
 /* /// Added for SHARE.  - Ron Cemer */
 
@@ -101,15 +97,25 @@ struct cds FAR *get_cds(unsigned drive)
   struct cds FAR *cdsp;
   unsigned flags;
 
+  DFnsDbgPrintf(("get_cds(drive=%u ?>= lastdrive=%u)\n", drive, lastdrive));
+  
   if (drive >= lastdrive)
     return NULL;
   cdsp = &CDSp[drive];
   flags = cdsp->cdsFlags;
   /* Entry is disabled or JOINed drives are accessable by the path only */
   if (!(flags & CDSVALID) || (flags & CDSJOINED) != 0)
+  {
+    DFnsDbgPrintf(("CDS is not valid or for JOINED drive\n"));
     return NULL;
+  }
   if (!(flags & CDSNETWDRV) && cdsp->cdsDpb == NULL)
+  {
+    DFnsDbgPrintf(("CDS is network or DBP is NULL\n"));
     return NULL;
+  }
+  
+  DFnsDbgPrintf(("returning CDS\n"));
   return cdsp;
 }
 
@@ -497,6 +503,8 @@ long DosOpenSft(char FAR * fname, unsigned flags, unsigned attrib)
   struct dhdr FAR *dhp;
   long result;
 
+  DFnsDbgPrintf(("DosOpenSft()\n"));
+  
   result = truename(fname, PriPathName, CDS_MODE_CHECK_DEV_PATH);
   if (result < SUCCESS)
     return result;
@@ -505,7 +513,10 @@ long DosOpenSft(char FAR * fname, unsigned flags, unsigned attrib)
 
   /* now get a free system file table entry       */
   if ((sftp = get_free_sft(&sft_idx)) == (sft FAR *) - 1)
+  {
+    DFnsDbgPrintf(("No free SFT entry\n"));
     return DE_TOOMANY;
+  }
 
   fmemset(sftp, 0, sizeof(sft));
 
@@ -563,7 +574,10 @@ long DosOpenSft(char FAR * fname, unsigned flags, unsigned attrib)
   /* First test the flags to see if the user has passed a valid   */
   /* file mode...                                                 */
   if ((flags & O_ACCMODE) > 2)
+  {
+    DFnsDbgPrintf(("Invalid open flags - %u\n", (flags & O_ACCMODE)));
     return DE_INVLDACC;
+  }
 
   /* NEVER EVER allow directories to be created */
   /* ... though FCBs are weird :) */
@@ -585,6 +599,7 @@ long DosOpenSft(char FAR * fname, unsigned flags, unsigned attrib)
   sftp->sft_count++;
   sftp->sft_flags = PriPathName[0] - 'A';
   result = dos_open(PriPathName, flags, attrib, sft_idx);
+  DFnsDbgPrintf(("dos_open() returned %i\n", result));
   if (result < 0)
   {
 /* /// Added for SHARE *** CURLY BRACES ADDED ALSO!!! ***.  - Ron Cemer */
@@ -1296,6 +1311,8 @@ struct dhdr FAR *IsDevice(const char FAR * fname)
   struct dhdr FAR *dhp;
   const char FAR *froot = get_root(fname);
   int i;
+  
+  DFnsDbgPrintf(("IsDevice(%S)\n", fname));
 
 /* /// BUG!!! This is absolutely wrong.  A filename of "NUL.LST" must be
        treated EXACTLY the same as a filename of "NUL".  The existence or
@@ -1353,9 +1370,13 @@ struct dhdr FAR *IsDevice(const char FAR * fname)
 
     /* if found a match then return device header */
     if (i == FNAME_SIZE)
+    {
+      DFnsDbgPrintf(("Is a device.\n"));
       return dhp;
+    }
   }
 
+  DFnsDbgPrintf(("Not a device.\n"));
   return NULL;
 }
 

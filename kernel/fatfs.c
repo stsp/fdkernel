@@ -29,10 +29,7 @@
 
 #include "portab.h"
 #include "globals.h"
-
-#ifdef VERSION_STRINGS
-BYTE *RcsId = "$Id: fatfs.c 1632 2011-06-13 16:29:14Z bartoldeman $";
-#endif
+#include "debug.h"
 
 /*                                                                      */
 /*      function prototypes                                             */
@@ -88,7 +85,11 @@ struct dpb FAR *get_dpb(COUNT dsk)
   register struct cds FAR *cdsp = get_cds(dsk);
   
   if (cdsp == NULL || cdsp->cdsFlags & CDSNETWDRV)
+  {
+    FatFSDbgPrintf(("get_dpb(dsk=0x%x)=NULL\n", dsk));
     return NULL;
+  }
+  FatFSDbgPrintf(("get_dpb(dsk=0x%x) succeeded.\n", dsk));
   return cdsp->cdsDpb;
 }
 
@@ -125,6 +126,8 @@ int dos_open(char *path, unsigned flags, unsigned attrib, int fd)
 {
   REG f_node_ptr fnp = sft_to_fnode(fd);
   int status = find_fname(path, D_ALL | attrib, fnp);
+  
+  FatFSDbgPrintf(("dos_open(flags=0x%x, attr=%u, fd=%i, status=%i\n", flags, attrib, fd, status));
 
   /* Check that we don't have a duplicate name, so if we  */
   /* find one, truncate it (O_CREAT).                     */
@@ -157,7 +160,11 @@ int dos_open(char *path, unsigned flags, unsigned attrib, int fd)
           and do not allow writing to r/o files) */
       if ((dir_attrib & (D_DIR | D_VOLID)) ||
           ((dir_attrib & D_RDONLY) && ((flags & O_ACCMODE) != O_RDONLY)))
+      {
+        FatFSDbgPrintf(("dos_open - access denied\n"));
         return DE_ACCESS;
+      }
+      
       status = S_OPENED;
     }
     else
@@ -176,6 +183,7 @@ int dos_open(char *path, unsigned flags, unsigned attrib, int fd)
   {
     /* open: If we can't find the file, just return a not    */
     /* found error.                                          */
+    FatFSDbgPrintf(("dos_open - not found?\n"));
     return status;
   }
 
@@ -200,6 +208,7 @@ int dos_open(char *path, unsigned flags, unsigned attrib, int fd)
   fnp->f_cluster = getdstart(fnp->f_dpb, &fnp->f_dir);
 
   fnode_to_sft(fnp);
+  FatFSDbgPrintf(("dos_open - returning %i\n", status));
   return status;
 }
 
@@ -279,7 +288,10 @@ STATIC int find_fname(const char *path, int attr, f_node_ptr fnp)
   /* check for leading backslash and open the directory given that */
   /* contains the file given by path.                              */
   if ((fnp = split_path(path, fnp)) == NULL)
+  {
+    FatFSDbgPrintf(("find_fname - path not found\n"));
     return DE_PATHNOTFND;
+  }
 
   while (dir_read(fnp) == 1)
   {
@@ -290,6 +302,8 @@ STATIC int find_fname(const char *path, int attr, f_node_ptr fnp)
     }
     fnp->f_dmp->dm_entry++;
   }
+  
+  FatFSDbgPrintf(("find_fname - file not found\n"));
   return DE_FILENOTFND;
 }
 
@@ -1074,9 +1088,9 @@ STATIC COUNT dos_extend(f_node_ptr fnp)
     sector = (UBYTE)(fnp->f_offset / secsize) & fnp->f_dpb->dpb_clsmask;
     boff = (UWORD)(fnp->f_offset % secsize);
 
-#ifdef DSK_DEBUG
+#ifdef DISPLAY_GETBLOCK
     printf("write %d links; dir offset %ld, cluster %d\n",
-           fnp->f_count, fnp->f_dmp->dm_entry, fnp->f_cluster);
+           count, fnp->f_dmp->dm_entry, fnp->f_cluster);
 #endif
 
     xfr_cnt = count < (ULONG) secsize - boff ?
@@ -1197,7 +1211,7 @@ long rwblock(COUNT fd, VOID FAR * buffer, UCOUNT count, int mode)
   unsigned to_xfer = count;
   ULONG currentblock;
 
-#if 0 /*DSK_DEBUG*/
+#if DSK_DEBUG
   if (bDumpRdWrParms)
   {
     printf("rwblock:fd %02x  buffer %04x:%04x count %x\n",
@@ -1371,9 +1385,9 @@ long rwblock(COUNT fd, VOID FAR * buffer, UCOUNT count, int mode)
     /* normal read: just the old, buffer = sector based read */
   normal_xfer:
 
-#ifdef DSK_DEBUG
+#ifdef DISPLAY_GETBLOCK
     printf("r/w %d links; dir offset %d, cluster %d, mode %x\n",
-           fnp->f_count, fnp->f_dmp->dm_entry, fnp->f_cluster, mode);
+           xfr_cnt, fnp->f_dmp->dm_entry, fnp->f_cluster, mode);
 #endif
 
     /* Get the block we need from cache                     */
@@ -1581,7 +1595,7 @@ VOID bpb_to_dpb(bpb FAR * bpbp, REG struct dpb FAR * dpbp)
   ULONG size;
   REG UWORD shftcnt;
   bpb_fat_ext ebpb;
-  bpb_fat *sbpb = &ebpb.bpb;
+  bpb_fat FAR *sbpb = &ebpb.bpb;
 
   /* Note: extra data past bpb may be copied if bpbp points to a bpb_fat_std */
   fmemcpy(&ebpb, bpbp, sizeof(ebpb));  

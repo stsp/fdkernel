@@ -47,6 +47,7 @@ extern struct _KernelConfig InitKernelConfig;
  */
 #define printf      init_printf
 #define sprintf     init_sprintf
+#define dgbc_printf init_dbgc_printf
 #ifndef __WATCOMC__
 #define execrh      init_execrh
 #define  memcpy     init_memcpy
@@ -205,6 +206,7 @@ VOID ASMCFUNC FAR int21_entry(iregs UserRegs);
 VOID ASMCFUNC int21_service(iregs far * r);
 VOID ASMCFUNC FAR int0_handler(void);
 VOID ASMCFUNC FAR int6_handler(void);
+VOID ASMCFUNC FAR int13_handler(void);
 VOID ASMCFUNC FAR int19_handler(void);
 VOID ASMCFUNC FAR empty_handler(void);
 VOID ASMCFUNC FAR int20_handler(void);
@@ -231,7 +233,8 @@ VOID init_fatal(BYTE * err_msg);
 
 /* prf.c */
 int VA_CDECL init_printf(CONST char * fmt, ...);
-int VA_CDECL init_sprintf(char * buff, CONST char * fmt, ...);
+int VA_CDECL init_dbgc_printf(CONST char * fmt, ...);
+int VA_CDECL init_sprintf(CONST char * buff, CONST char * fmt, ...);
 
 /* procsupt.asm */
 VOID ASMCFUNC FAR got_cbreak(void);

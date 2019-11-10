@@ -32,6 +32,8 @@ static BYTE *mainRcsId =
 
 #include        "portab.h"
 #include        "globals.h"
+#include "debug.h"
+
 
 /*
     TE-TODO: if called repeatedly by same process, 
@@ -104,9 +106,6 @@ long DosMkTmp(BYTE FAR * pathname, UWORD attr)
   return rc;
 }
 
-#ifdef DEBUG
-#define DEBUG_TRUENAME
-#endif
 
 #define drLetterToNr(dr) ((unsigned char)((dr) - 'A'))
 /* Convert an uppercased drive letter into the drive index */
@@ -233,12 +232,6 @@ long DosMkTmp(BYTE FAR * pathname, UWORD attr)
 
 */
 
-#ifdef DEBUG_TRUENAME
-#define tn_printf(x) printf x
-#else
-#define tn_printf(x)
-#endif
-
 #define PNE_WILDCARD 1
 #define PNE_DOT 2
 
@@ -274,7 +267,10 @@ COUNT truename(const char FAR * src, char * dest, COUNT mode)
      rejected by MS DOS 6 */
   src0 = src[0];
   if (src0 == '\0')
+  {
+    tn_printf(("Empty string - not found\n"));
     return DE_FILENOTFND;
+  }
 
   if (src0 == '\\' && src[1] == '\\') {
     const char FAR *unc_src = src;
@@ -459,6 +455,7 @@ COUNT truename(const char FAR * src, char * dest, COUNT mode)
   }
 
   /* append the path specified in src */
+  tn_printf(("truename - checkpoint\n"));
 
   state = 0;
   while(*src)
@@ -625,7 +622,7 @@ COUNT truename(const char FAR * src, char * dest, COUNT mode)
     else
       result = 0; /* AL is 00, 2f, 5c, or last-of-TempCDS.cdsCurrentPath? */
   }
-  tn_printf(("Physical path: \"%s\"\n", dest));
+  tn_printf(("Physical path: \"%s\" - %i\n", dest, result));
   return result;
 }
 
