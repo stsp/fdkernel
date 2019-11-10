@@ -314,17 +314,25 @@ segment _LOWTEXT
 
                 ; low interrupt vectors 10h,13h,15h,19h,1Bh
                 ; these need to be at 0070:0100 (see RBIL memory.lst)
+                ; int vectors that should try to restore before a warm reboot
                 global _intvec_table
-_intvec_table:  db 10h
-                dd 0
+                global _BIOSInt13
+                global _UserInt13
+                global _BIOSInt19
+_intvec_table:
+                db 10h
+                dd 0 ; original int10
                 db 13h
-                dd 0
+_BIOSInt13      dd 0 ; used to restore int13 on reboot (see int19 wrapper)
+                     ; also used by our int13 handler and get/set via int 2f/13h
                 db 15h
-                dd 0
+                dd 0 ; original int15
                 db 19h
-                dd 0
+_BIOSInt19      dd 0 ; original int19
                 db 1Bh
-                dd 0
+                dd 0 ; original int1B
+                db 13h                
+_UserInt13      dd 0 ; disk handler used by kernel, defaults to original BIOS Int13
 
                 ; floppy parameter table
                 global _int1e_table
@@ -353,11 +361,14 @@ dos_data        db      0
                 global  _NetBios
 _NetBios        dw      0               ; NetBios Number
 
-                times (26h - 0ch - ($ - DATASTART)) db 0
+                times (26h - 12h - ($ - DATASTART)) db 0
 
 ; Globally referenced variables - WARNING: DO NOT CHANGE ORDER
 ; BECAUSE THEY ARE DOCUMENTED AS UNDOCUMENTED (?) AND HAVE
 ; MANY MULTIPLEX PROGRAMS AND TSRs ACCESSING THEM
+                global _OemHook21
+_OemHook21      dd      -1              ;-0012 OEM fn handler (int21/f8h)
+                dw      0               ;-000e offset from DOS CS of int21 ret
                 global  _NetRetry
 _NetRetry       dw      3               ;-000c network retry count
                 global  _NetDelay
@@ -381,17 +392,21 @@ _clock          dd      0               ; 0008 CLOCK$ device
 _syscon         dw      _con_dev,seg _con_dev   ; 000c console device
                 global  _maxsecsize
 _maxsecsize     dw      512             ; 0010 maximum bytes/sector of any block device
-                dd      0               ; 0012 pointer to buffers info structure
+                global  _inforecptr
+_inforecptr     dd      0               ; 0012 pointer to buffers info structure
                 global  _CDSp
 _CDSp           dd      0               ; 0016 Current Directory Structure
                 global  _FCBp
 _FCBp           dd      0               ; 001a FCB table pointer
                 global  _nprotfcb
-_nprotfcb       dw      0               ; 001e number of protected fcbs
+_nprotfcb       dw      0               ; 001e number of protected fcbs, 
+                                        ;      unused for DOS 5+
                 global  _nblkdev
 _nblkdev        db      0               ; 0020 number of block devices
+                                        ;      should match # of DPBs
                 global  _lastdrive
 _lastdrive      db      0               ; 0021 value of last drive
+                                        ;      ie max logical drives, should match # of CDSs
                 global  _nul_dev
 _nul_dev:           ; 0022 device chain root
                 extern  _con_dev:wrt LGROUP
@@ -432,7 +447,10 @@ _bufloc         db      0               ; 0053 00=conv 01=HMA
 _deblock_buf    dd      0               ; 0054 deblock buffer
                 times 3 db 0            ; 0058 unknown
                 dw      0               ; 005B unknown
-                db      0, 0FFh, 0      ; 005D unknown
+				global  _int24fail
+_int24fail      db      0               ; 005D
+_memstrat       db      0FFh            ; 005E
+_a20count       db      0               ; 005F
                 global _VgaSet
 _VgaSet         db      0               ; 0060 unknown
                 dw      0               ; 0061 unknown
@@ -457,7 +475,7 @@ _os_setver_major        db      5
 _os_minor       db      0
                 global  _os_major              
 _os_major       db      5
-_rev_number     db      0
+_rev_number     db      0 ;  only lower 3 bits available, no longer used
                 global  _version_flags         
 _version_flags  db      0
 
@@ -505,7 +523,9 @@ _winPatchTable: ; returns offsets to various internal variables
 _firstsftt:             
                 dd -1                   ; link to next
                 dw 5                    ; count 
-        
+                times 5*59 db 0         ; reserve space for the 5 sft entries
+                db 0                    ; pad byte so next value on even boundary        
+
 ; Some references seem to indicate that this data should start at 01fbh in
 ; order to maintain 100% MS-DOS compatibility.
                 times (01fbh - ($ - DATASTART)) db 0
@@ -809,6 +829,13 @@ blk_stk_top:
                 times 128 dw 0
 clk_stk_top:
 
+%IFDEF WIN31SUPPORT
+; mux2F private stack
+                global  mux2F_stk_top
+                times 128 dw 0
+mux2F_stk_top:
+%ENDIF ; WIN31SUPPORT
+
 ; Dynamic data:
 ; member of the DOS DATA GROUP
 ; and marks definitive end of all used data in kernel data segment
@@ -966,6 +993,11 @@ _int0_handler:  jmp 0:reloc_call_int0_handler
                 global  _int6_handler
                 extern  reloc_call_int6_handler
 _int6_handler:  jmp 0:reloc_call_int6_handler
+                call near forceEnableA20
+
+                global  _int13_handler
+                extern  reloc_call_int13_handler
+_int13_handler: jmp 0:reloc_call_int13_handler
                 call near forceEnableA20
 
                 global  _int19_handler

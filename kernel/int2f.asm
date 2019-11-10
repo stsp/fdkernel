@@ -25,15 +25,12 @@
 ; write to the Free Software Foundation, 675 Mass Ave,
 ; Cambridge, MA 02139, USA.
 ;
-; $Id: int2f.asm 1591 2011-05-06 01:46:55Z bartoldeman $
-;
 
         %include "segs.inc"
         %include "stacks.inc"
 
 segment	HMA_TEXT
             extern _cu_psp:wrt DGROUP
-            extern _HaltCpuWhileIdle:wrt DGROUP
             extern _syscall_MUX14
 
             extern _DGROUP_
@@ -55,31 +52,16 @@ Int2f2:
 FarTabRetn:
                 retf    2                       ; Return far
 
-WinIdle:					; only HLT if at haltlevel 2+
-		push	ds
-                mov     ds, [cs:_DGROUP_]
-		cmp	byte [_HaltCpuWhileIdle],2
-		pop	ds
-		jb	FarTabRetn
-		pushf
-		sti
-		hlt				; save some energy :-)
-		popf
-		push	ds
-                mov     ds, [cs:_DGROUP_]
-		cmp	byte [_HaltCpuWhileIdle],3
-		pop	ds
-		jb	FarTabRetn
-		mov	al,0			; even admit we HLTed ;-)
-		jmp	short FarTabRetn
-
-Int2f3:         cmp     ax,1680h                ; Win "release time slice"
-                je      WinIdle
-                cmp     ah,16h
-                je      FarTabRetn              ; other Win Hook return fast
+Int2f3:
                 cmp     ah,12h
                 je      IntDosCal               ; Dos Internal calls
-
+                cmp     ah,13h
+                je      IntDosCal               ; Install Int13h Hook
+                cmp     ah,16h
+                je      IntDosCal               ; Win (Multitasking) Hook
+                cmp     ah,46h
+                je      IntDosCal               ; Win Hook to avoid MCB corruption
+                
                 cmp     ax,4a01h
                 je      IntDosCal               ; Dos Internal calls
                 cmp     ax,4a02h
@@ -88,6 +70,9 @@ Int2f3:         cmp     ax,1680h                ; Win "release time slice"
                 cmp     ax,4a33h                ; Check DOS version 7
                 jne     Check4Share
                 xor     ax,ax                   ; no undocumented shell strings
+                xor     bx,bx                   ; RBIL undoc BX = ?? (0h)
+                                                ;  " DS:DX ASCIIZ shell exe name
+                                                ;  " DS:SI SHELL= line
                 iret
 Check4Share:
 %endif
@@ -102,7 +87,7 @@ Int2f?14:      ;; MUX-14 -- NLSFUNC API
                push bp                 ; Preserve BP later on
                Protect386Registers
                PUSH$ALL
-               mov ds, [cs:_DGROUP_]
+               mov ds, [cs:_DGROUP_]   ; ensure DS=DGROUP for C code
                call _syscall_MUX14
                pop bp                  ; Discard incoming AX
                push ax                 ; Correct stack for POP$ALL
@@ -122,6 +107,12 @@ Int2f?iret:
                iret
 
 ; DRIVER.SYS calls - now only 0803.
+; Int 2Fh MUX AH=08h - DRIVER.SYS hook
+; Subfunctions (AL=)
+;    0x00 - install check (is DRIVER hook available? yes then return AL=0xFF)
+;    0x01 - add DDT (in DS:DI) to end of linked list of DDT entries
+;    0x02 - forward device driver request (in ES:BX) to DOS disk driver
+;    0x03 - return start of DDT linked list in DS:DI [getddt()]
 DriverSysCal:
                 extern  _Dyn:wrt DGROUP
                 cmp     al, 3
@@ -133,6 +124,7 @@ DriverSysCal:
 
 ;**********************************************************************
 ; internal dos calls INT2F/12xx and INT2F/4A01,4A02 - handled through C 
+; also handle Windows' DOS notification hooks
 ;**********************************************************************
 IntDosCal:                
                         ; set up register frame
@@ -155,6 +147,29 @@ IntDosCal:
     push es
 
     cld
+    
+%IFDEF WIN31SUPPORT     ; switch to local stack, no reentrancy support
+                extern  mux2F_stk_top:wrt DGROUP
+                cli
+                ; setup, initialize copy
+                mov  si, sp                ; ds:si = ss:sp (user stack)
+                mov  ax, ss
+                mov  ds, ax
+                mov  di, mux2F_stk_top-30  ; es:di = local stack-copied chunk
+                mov  es, [cs:_DGROUP_]     ; [-X == -(2*cx below+4) ]
+                mov  cx, 13                ; how many words to copy over
+                ; setup, store original stack pointer
+                mov  [es:di+28], si        ; store ss:sp
+                mov  [es:di+26], ds
+                ; actually switch to local stack
+                mov  ax, es
+                mov  ss, ax
+                mov  sp, di
+                ; copy over stack data to local stack
+                rep movsw
+                sti
+%ENDIF ; WIN31SUPPORT
+    
 
 %if XCPU >= 386
   %ifdef WATCOM
@@ -177,6 +192,24 @@ IntDosCal:
     Restore386Registers    
   %endif
 %endif      
+
+%IFDEF WIN31SUPPORT     ; switch back to user stack
+                cli
+                ; setup, initialize copy
+                mov  si, sp                ; ds:si = ss:sp (local stack)
+                mov  ax, ss
+                mov  ds, ax
+                mov  di, [ds:si+28]        ; restore original ss:sp
+                mov  es, [ds:si+26]
+                mov  cx, 13                ; how many words to copy over
+                ; actually switch to user stack
+                mov  ax, es
+                mov  ss, ax
+                mov  sp, di
+                ; copy over stack data to user stack
+                rep movsw
+                sti
+%ENDIF ; WIN31SUPPORT
     
     pop es
     pop ds
