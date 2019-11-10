@@ -38,7 +38,7 @@ COUNT nUnits BSS_INIT(0);
  *    Rev 1.0   13 May 2001  tom ehlert
  * Initial revision.
  *
- * this module implements the disk scanning for DOS accesible partitions
+ * this module implements the disk scanning for DOS accessible partitions
  * the drive letter ordering is somewhat chaotic, but like MSDOS does it.
  *
  * this module expects to run with CS = INIT_TEXT, like other init_code,
@@ -252,6 +252,8 @@ COUNT init_readdasd(UBYTE drive)
 {
   static iregs regs;
 
+  DebugPrintf(("init_readdasd(0x%02x)\n"));
+  
   regs.a.b.h = 0x15;
   regs.d.b.l = drive;
   init_call_intr(0x13, &regs);
@@ -282,12 +284,15 @@ COUNT init_getdriveparm(UBYTE drive, bpb * pbpbarray)
   static iregs regs;
   REG UBYTE type;
 
+  DebugPrintf(("init_getdriveparm(0x%02x,...)\n", drive));
+  
   if (drive & 0x80)
     return 5;
   regs.a.b.h = 0x08;
   regs.d.b.l = drive;
   /* Note: RBIL suggests setting ES:DI to 0:0 to guard against BIOS bugs */
   init_call_intr(0x13, &regs);
+  DebugPrintf(("init_call_intr returned!\n"));
   type = regs.b.b.l - 1;
   if (regs.flags & FLG_CARRY)
     type = 0;                   /* return 320-360 for XTs */
@@ -409,12 +414,12 @@ VOID CalculateFATData(ddt * pddt, ULONG NumSectors, UBYTE FileSystem)
       unsigned maxclust = (defbpb->bpb_nfsect * 2 * SEC_SIZE) / 3;
       if (maxclust > FAT12MAX)
         maxclust = FAT12MAX;
-      printf("FAT12: #clu=%u, fatlength=%u, maxclu=%u, limit=%u\n",
-             clust, defbpb->bpb_nfsect, maxclust, FAT12MAX);
+      DebugPrintf(("FAT12: #clu=%u, fatlength=%u, maxclu=%u, limit=%u\n",
+                   clust, defbpb->bpb_nfsect, maxclust, FAT12MAX));
       if (clust > maxclust - 2)
       {
         clust = maxclust - 2;
-        printf("FAT12: too many clusters: setting to maxclu-2\n");
+        DebugPrintf(("FAT12: too many clusters: setting to maxclu-2\n"));
       }
     }
 #endif
@@ -503,6 +508,7 @@ VOID CalculateFATData(ddt * pddt, ULONG NumSectors, UBYTE FileSystem)
     if (FileSystem == FAT32 || FileSystem == FAT32_LBA)
     {
       bpb_fat_ext *ebpb = (bpb_fat_ext *)defbpb;
+      DebugPrintf(("FAT32!!\n"));
       defbpb->bpb_nfsect = 0;
       ebpb->bpb_xnfsect = fatlength;
       /* set up additional FAT32 fields */
@@ -956,7 +962,7 @@ int Read1LBASector(struct DriveParamS *driveParam,
 /* disabled because this should not happen and if it happens the BIOS
    should complain; also there are weird disks around with
    CMOS geometry < real geometry */
-#if 0
+#if DEBUG
   if (LBA_address >= driveParam->total_sectors)
   {
     printf("LBA-Transfer error : address overflow = %lu, > %lu total sectors\n",
@@ -1122,6 +1128,7 @@ strange_restart:
   return PartitionsToIgnore;
 }
 
+/* query BIOS for number of hard disks */
 int BIOS_nrdrives(void)
 {
   iregs regs;
@@ -1142,6 +1149,10 @@ int BIOS_nrdrives(void)
 void BIOS_drive_reset(unsigned drive)
 {
   iregs regs;
+  
+  DebugPrintf(("BIOS reset drive %x\n", drive));
+  printf("Address of me is %p\n", BIOS_drive_reset);
+  printf("Agh!\n");halt();
 
   regs.d.b.l = drive | 0x80;
   regs.a.b.h = 0;
@@ -1241,6 +1252,7 @@ I don't know, if I did it right, but I tried to do it that way. TE
 
 ***********************************************************************/
 
+/* initializes ddt */
 STATIC void make_ddt (ddt *pddt, int Unit, int driveno, int flags)
 {
   pddt->ddt_next = MK_FP(0, 0xffff);
@@ -1266,6 +1278,7 @@ void ReadAllPartitionTables(void)
   ddt nddt;
   static iregs regs;
 
+  DebugPrintf(("Updating floppy int1E table\n"));
 
   /* quick adjustment of diskette parameter table */
   fmemcpy(int1e_table, *(char FAR * FAR *)MK_FP(0, 0x1e*4), sizeof(int1e_table));
@@ -1277,6 +1290,7 @@ void ReadAllPartitionTables(void)
   /* and adjust int1e */
   setvec(0x1e, (intvec)int1e_table);
 
+  DebugPrintf(("Setup floppies\n"));
   /* Setup media info and BPBs arrays for floppies */
   make_ddt(&nddt, 0, 0, 0);
 
@@ -1284,6 +1298,7 @@ void ReadAllPartitionTables(void)
      this is a quick patch - see if B: exists
      test for A: also, need not exist
    */
+  DebugPrintf(("How many floppy drives present?\n"));
   init_call_intr(0x11, &regs);  /* get equipment list */
 /*if ((regs.AL & 1)==0)*//* no floppy drives installed  */
   if ((regs.AL & 1) && (regs.AL & 0xc0))
@@ -1300,10 +1315,11 @@ void ReadAllPartitionTables(void)
   /* Initial number of disk units                                 */
   nUnits = 2;
 
+  DebugPrintf(("Determine how many drives installed.\n"));
   /* get count of installed hard drives up to max count supported */
   nHardDisk = BIOS_nrdrives();
   if (nHardDisk > LENGTH(foundPartitions))
-    nHardDisk = LENGTH(foundPartitions);
+    nHardDisk = LENGTH(foundPartitions);  /* == MAX_HARD_DRIVE */
   DebugPrintf(("DSK init: found %d disk drives\n", nHardDisk));
 
   /* Reset the drives and get parameters validating exists        */
@@ -1409,8 +1425,9 @@ void ReadAllPartitionTables(void)
 COUNT dsk_init()
 {
   printf(" - InitDisk");
+  DebugPrintf(("\ndsk_init() at address %p\n", (void FAR *)dsk_init));
 
-#ifdef DEBUG
+#if defined DEBUG && !defined DEBUG_PRINT_COMPORT
   {
     iregs regs;
     regs.a.x = 0x1112;          /* select 43 line mode - more space for partinfo */
@@ -1422,6 +1439,7 @@ COUNT dsk_init()
   /* Reset the drives                                             */
   BIOS_drive_reset(0);
 
+  DebugPrintf(("ReadAllPartitionTables()\n"));
   ReadAllPartitionTables();
 
   return nUnits;
