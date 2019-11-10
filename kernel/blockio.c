@@ -30,11 +30,8 @@
 
 #include "portab.h"
 #include "globals.h"
+#include "debug.h"
 
-#ifdef VERSION_STRINGS
-static BYTE *blockioRcsId =
-    "$Id: blockio.c 1702 2012-02-04 08:46:16Z perditionc $";
-#endif
 
 #define b_next(bp) ((struct buffer FAR *)(MK_FP(FP_SEG(bp), bp->b_next)))
 #define b_prev(bp) ((struct buffer FAR *)(MK_FP(FP_SEG(bp), bp->b_prev)))
@@ -233,6 +230,9 @@ struct buffer FAR *getblk(ULONG blkno, COUNT dsk, BOOL overwrite)
 
   if (!overwrite && dskxfer(dsk, blkno, bp->b_buffer, 1, DSKREAD))
   {
+#ifdef DISPLAY_GETBLOCK
+      printf("Error reading into buffer\n");
+#endif
     return NULL;
   }
 
