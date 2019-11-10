@@ -65,11 +65,8 @@
 
 #include "portab.h"
 #include "init-mod.h"
+#include "debug.h"
 
-#ifdef VERSION_STRINGS
-static BYTE *RcsId =
-    "$Id: inithma.c 956 2004-05-24 17:07:04Z bartoldeman $";
-#endif
 
 BYTE DosLoadedInHMA BSS_INIT(FALSE);  /* set to TRUE if loaded HIGH          */
 BYTE HMAclaimed BSS_INIT(0);          /* set to TRUE if claimed from HIMEM   */
@@ -88,12 +85,6 @@ void int3()
 #endif
 #else
 #define int3()
-#endif
-
-#ifdef DEBUG
-#define HMAInitPrintf(x) printf x
-#else
-#define HMAInitPrintf(x)
 #endif
 
 #ifdef DEBUG
@@ -160,7 +151,7 @@ int EnableHMA(VOID)
     move the kernel up to high memory
     this is very unportable
     
-    if we thin we succeeded, we return TRUE, else FALSE
+    if we think we succeeded, we return TRUE, else FALSE
 */
 
 #define HMAOFFSET  0x20
@@ -172,11 +163,15 @@ int MoveKernelToHMA()
 
   if (DosLoadedInHMA)
   {
+    HMAInitPrintf(("Loaded in HMA\n"));
     return TRUE;
   }
 
   if ((xms_addr = DetectXMSDriver()) == NULL)
+  {
+    HMAInitPrintf(("No XMS Driver found\n"));
     return FALSE;
+  }
 
   XMSDriverAddress = xms_addr;
 
@@ -212,6 +207,7 @@ int MoveKernelToHMA()
     return FALSE;
   }
 
+  HMAInitPrintf(("Moving Kernel to 0xffff\n"));
   MoveKernel(0xffff);
 
   {
@@ -247,7 +243,7 @@ int MoveKernelToHMA()
 */
 STATIC void InstallVDISK(void)
 {
-  static struct {               /* Boot-Sektor of a RAM-Disk */
+  static struct {               /* Boot-Sector of a RAM-Disk */
     UBYTE dummy1[3];            /* HIMEM.SYS uses 3, but FDXMS uses 2 */
     char Name[5];
     BYTE dummy2[3];
@@ -311,9 +307,12 @@ void MoveKernel(unsigned NewKernelSegment)
   unsigned len;
   unsigned jmpseg = CurrentKernelSegment;
  
+  /* on 1st call use original link time (unrelocated) TGROUP segment */
   if (CurrentKernelSegment == 0)
     CurrentKernelSegment = FP_SEG(_HMATextEnd);
+  HMAInitPrintf(("CurrentKernelSegment = %x\n", CurrentKernelSegment));
 
+  /* if already relocated to HMA, then ignore move request */
   if (CurrentKernelSegment == 0xffff)
     return;
 
