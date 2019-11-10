@@ -57,6 +57,13 @@ uScanCode	db	0		; Scan code for con: device
 global          _kbdType
 _kbdType        db      0		; 00 for 84key, 10h for 102key        
 
+;%IFNDEF SERIAL_OUTPUT
+;%DEFINE SERIAL_OUTPUT  0               ; 0=COM1, 1=COM2, 2=COM3, 3=COM4
+;%ENDIF
+%IFDEF SERIAL_OUTPUT
+ASYNC_NEED_INIT db      1
+%ENDIF
+
                 global  ConInit
 ConInit:
 	        xor	ax,ax
@@ -243,12 +250,58 @@ _int29_handler:
                 push    di
                 push    bp
                 push    bx
+%IFDEF SERIAL_OUTPUT
+                cmp     bx, 0xFD05              ; magic value for COM print routine
+                je      .comprint
+%ENDIF
                 mov     ah,0Eh
                 mov     bx,7
                 int     10h                     ; write char al, teletype mode
+.int29hndlr_ret:
                 pop     bx
                 pop     bp
                 pop     di
                 pop     si
                 pop     ax
                 iret
+%IFDEF SERIAL_OUTPUT
+.comprint:
+                push    dx
+                mov     dx, SERIAL_OUTPUT       ; 0=COM1,1=COM2,2=COM3,3=COM4
+
+                mov     ah, [cs:ASYNC_NEED_INIT]
+                or      ah,ah
+                jz      .skip_init
+                push    ax                      ; preserve char (AL) to print
+
+                ; initialize serial port using BIOS to DOS default
+                ; of 2400 bps, 8 data bits, 1 stop bit, and no parity
+                mov     ax, 0x00A3
+                int     14h                     ; BIOS initialize serial port
+
+                mov     ax, 0x011B              ; clear the remote screen (ESC[2J)
+                int     14h                     ; BIOS write character to serial port
+                mov     ax, 0x015B              ; '['
+                int     14h                     ; BIOS write character to serial port
+                mov     ax, 0x0132              ; '2'
+                int     14h                     ; BIOS write character to serial port
+                mov     ax, 0x014A              ; 'J'
+                int     14h                     ; BIOS write character to serial port
+
+                ; mark initialization complete
+                mov     byte [cs:ASYNC_NEED_INIT], 0
+
+                pop     ax                      ; restore char to print
+.skip_init:
+                cmp     al, 0x0A                ; do we need to add a carriage return?
+                jne     .print_it
+                mov     ax, 0x010D              ; print as \r\n
+                int     14h
+                mov     al, 0x0A
+.print_it:
+                mov     ah, 0x01
+                int     14h                     ; BIOS write character to serial port
+
+                pop     dx
+                jmp     .int29hndlr_ret
+%ENDIF ; SERIAL_OUTPUT
