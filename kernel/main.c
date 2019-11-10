@@ -32,17 +32,13 @@
 #include "dyndata.h"
 #include "debug.h"
 
-#ifdef VERSION_STRINGS
-static BYTE *mainRcsId =
-    "$Id: main.c 1699 2012-01-16 20:45:44Z perditionc $";
-#endif
 
 static char copyright[] =
     "(C) Copyright 1995-2012 Pasquale J. Villani and The FreeDOS Project.\n"
     "All Rights Reserved. This is free software and comes with ABSOLUTELY NO\n"
     "WARRANTY; you can redistribute it and/or modify it under the terms of the\n"
     "GNU General Public License as published by the Free Software Foundation;\n"
-    "either version 2, or (at your option) any later version.\n";
+    "either version 2, or (at your option) any later version.\n\n";
 
 struct _KernelConfig InitKernelConfig BSS_INIT({0});
 
@@ -83,6 +79,11 @@ VOID ASMCFUNC FreeDOSmain(void)
 
   /* clear the Init BSS area (what normally the RTL does */
   memset(_ib_start, 0, _ib_end - _ib_start);
+  
+#ifdef DEBUG
+  setvec(0x29, int29_handler);  /* required for printf! */
+  DebugPrintf(("FreeDOSmain() - %p\n", (void FAR *)FreeDOSmain));
+#endif
 
                         /*  if the kernel has been UPX'ed,
                                 CONFIG info is stored at 50:e2 ..fc
@@ -110,23 +111,26 @@ VOID ASMCFUNC FreeDOSmain(void)
   LoL->BootDrive = drv;
 
   /* install DOS API and other interrupt service routines, basic kernel functionality works */
+  DebugPrintf(("setup_int_vectors()\n"));
   setup_int_vectors();
 
+  DebugPrintf(("CheckContinueBootFromHarddisk()\n"));
   CheckContinueBootFromHarddisk();
 
   /* display copyright info and kernel emulation status */
+  DebugPrintf(("signon()\n"));
   signon();
 
   /* initialize all internal variables, process CONFIG.SYS, load drivers, etc */
+  DebugPrintf(("init_kernel()\n"));
   init_kernel();
 
-#ifdef DEBUG
   /* Non-portable message kludge alert!   */
-  printf("KERNEL: Boot drive = %c\n", 'A' + LoL->BootDrive - 1);
-#endif
+  DebugPrintf(("KERNEL: Boot drive = %c\n", 'A' + LoL->BootDrive - 1));
 
   DoInstall();
 
+  DebugPrintf(("kernel()\n"));
   kernel();
 }
 
@@ -231,6 +235,7 @@ void setvec(unsigned char intno, intvec vector)
 }
 #endif
 
+
 STATIC void setup_int_vectors(void)
 {
   static struct vec
@@ -244,6 +249,7 @@ STATIC void setup_int_vectors(void)
       { 0x1, FP_OFF(empty_handler) },  /* single step */
       { 0x3, FP_OFF(empty_handler) },  /* debug breakpoint */
       { 0x6, FP_OFF(int6_handler) },   /* invalid opcode */
+     // { 0x13, FP_OFF(int13_handler) },
       { 0x19, FP_OFF(int19_handler) },
       { 0x20, FP_OFF(int20_handler) },
       { 0x21, FP_OFF(int21_handler) },
@@ -260,13 +266,21 @@ STATIC void setup_int_vectors(void)
   struct lowvec FAR *plvec;
   int i;
 
-  for (plvec = intvec_table; plvec < intvec_table + 5; plvec++)
+  HaltCpuWhileIdle = 0;
+  
+  /* save original values to be restored before warm reboot, 10h,13h,15h,19h,1Bh */
+  /* also store default 13h handler, may be replaced at later time, e.g. by Windows */
+  for (plvec = intvec_table; plvec < intvec_table + 6; plvec++)
     plvec->isv = getvec(plvec->intno);
+  
+  /* initialize int vectors to known do nothing handler */  
   for (i = 0x23; i <= 0x3f; i++)
     setvec(i, empty_handler);
-  HaltCpuWhileIdle = 0;
+  
+  /* set DOS specific int vectors to handler using above table */
   for (pvec = vectors; pvec < vectors + (sizeof vectors/sizeof *pvec); pvec++)
     setvec(pvec->intno, (intvec)MK_FP(FP_SEG(empty_handler), pvec->handleroff));
+  
   pokeb(0, 0x30 * 4, 0xea);
   pokel(0, 0x30 * 4 + 1, (ULONG)cpm_entry);
 
@@ -278,12 +292,14 @@ STATIC void setup_int_vectors(void)
 STATIC void init_kernel(void)
 {
   COUNT i;
+  DebugPrintf(("init_kernel() at %p\n", (void FAR *)init_kernel));
 
   LoL->os_setver_major = LoL->os_major = MAJOR_RELEASE;
   LoL->os_setver_minor = LoL->os_minor = MINOR_RELEASE;
 
   /* Init oem hook - returns memory size in KB    */
   ram_top = init_oem();
+  DebugPrintf(("memory size in KB = %u\n", ram_top));
 
   /* move kernel to high conventional RAM, just below the init code */
 #ifdef __WATCOMC__
@@ -292,18 +308,25 @@ STATIC void init_kernel(void)
   lpTop = MK_FP(_CS - (FP_OFF(_HMATextEnd) + 15) / 16, 0);
 #endif
 
+  DebugPrintf(("Moving Kernel to %p\n", lpTop));
   MoveKernel(FP_SEG(lpTop));
   lpTop = MK_FP(FP_SEG(lpTop) - 0xfff, 0xfff0);
+  DebugPrintf(("lpTop = %p\n", lpTop));
 
   /* Initialize IO subsystem                                      */
+  DebugPrintf(("Initing subsystems: I/O "));
   InitIO();
+  DebugPrintf(("Printers "));
   InitPrinters();
+  DebugPrintf(("SerialPorts\n"));
   InitSerialPorts();
 
+  DebugPrintf(("Init PSP\n"));
   init_PSPSet(DOS_PSP);
   set_DTA(MK_FP(DOS_PSP, 0x80));
   PSPInit();
 
+  DebugPrintf(("Init clock\n"));
   Init_clk_driver();
 
   /* Do first initialization of system variable buffers so that   */
@@ -313,8 +336,10 @@ STATIC void init_kernel(void)
   LoL->lastdrive = 26;
 
   /*  init_device((struct dhdr FAR *)&blk_dev, NULL, 0, &ram_top); */
+  DebugPrintf(("Init disk\n"));
   blk_dev.dh_name[0] = dsk_init();
 
+  DebugPrintf(("Start config\n"));
   PreConfig();
 
   /* Number of units */
@@ -435,9 +460,11 @@ STATIC VOID signon()
 #ifdef WITHFAT32
   " - FAT32 support"
 #endif
-  "\n\n%s",
+  "\n\n",
          MK_FP(FP_SEG(LoL), FP_OFF(LoL->os_release)),
-         MAJOR_RELEASE, MINOR_RELEASE, copyright);
+         MAJOR_RELEASE, MINOR_RELEASE);
+  if (*copyright) printf("\n");
+  printf(copyright);
 }
 
 STATIC void kernel()
