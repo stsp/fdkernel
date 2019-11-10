@@ -11,9 +11,8 @@ HDR=../hdr/
 # Only 8 files per definition; this is limitation of DOS batch
 # files (only 9 directly accessible parameters).
 
-OBJS1=kernel.obj entry.obj io.obj console.obj serial.obj printer.obj dsk.obj \
-sysclk.obj
-OBJS2=asmsupt.obj execrh.obj nlssupt.obj procsupt.obj dosidle.obj int2f.obj \
+OBJS1=kernel.obj entry.obj intwrap.obj io.obj console.obj serial.obj printer.obj dsk.obj
+OBJS2=sysclk.obj asmsupt.obj execrh.obj nlssupt.obj procsupt.obj dosidle.obj int2f.obj \
 nls_hc.obj
 OBJS3=apisupt.obj intr.obj irqstack.obj blockio.obj chario.obj systime.obj \
 error.obj
@@ -75,6 +74,7 @@ console.obj:	console.asm io.inc			$(TARGET).lnk
 cpu.obj:	cpu.asm  segs.inc $(TARGET).lnk
 dosidle.obj:	dosidle.asm segs.inc			$(TARGET).lnk
 entry.obj:	entry.asm   segs.inc $(HDR)stacks.inc	$(TARGET).lnk
+intwrap.obj:	entry.asm   segs.inc $(HDR)stacks.inc	$(TARGET).lnk
 execrh.obj:	execrh.asm  segs.inc 			$(TARGET).lnk
 int2f.obj:	int2f.asm   segs.inc $(HDR)stacks.inc	$(TARGET).lnk
 intr.obj:	intr.asm    segs.inc			$(TARGET).lnk
