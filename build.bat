@@ -50,11 +50,15 @@ if "%1" == "x86"   goto setCPU
 
 if "%1" == "upx"   set XUPX=upx --8086 --best
 
-if "%1" == "debug" set ALLCFLAGS=%ALLCFLAGS% -DDEBUG
 if "%1" == "lfnapi" set ALLCFLAGS=%ALLCFLAGS% -DWITHLFNAPI
 
 if "%1" == "win"   set ALLCFLAGS=%ALLCFLAGS% -DWIN31SUPPORT
 if "%1" == "win"   set NASMFLAGS=%NASMFLAGS% -DWIN31SUPPORT
+
+if "%1" == "debug" set ALLCFLAGS=%ALLCFLAGS% -DDEBUG
+if "%1" == "dbgserial" set ALLCFLAGS=%ALLCFLAGS% -DDEBUG_PRINT_COMPORT -DDEBUG
+if "%1" == "dbgserial" goto setSerial
+if "%1" == "serial" goto setSerial
 
 if "%1" == "list"  set NASMFLAGS=%NASMFLAGS% -l$*.lst
 
@@ -144,6 +148,13 @@ shift
 if "%1" == "" echo you MUST specify compiler's cpu cmd line argument, eg -5
 if "%1" == "" goto abort
 set XCPU_EX=%1
+goto nextOption
+
+:setSerial
+shift
+if "%1" == "" echo you MUST specify which serial port to use, 0=COM1, 1=COM2, ...
+if "%1" == "" goto abort
+set NASMFLAGS=%NASMFLAGS% -DSERIAL_OUTPUT=%1
 goto nextOption
 
 :setDefine
