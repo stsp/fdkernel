@@ -27,6 +27,7 @@
 /****************************************************************/
 
 #include "portab.h"
+#include "debug.h"
 
 #ifdef FORSYS
 #include <io.h>
@@ -39,11 +40,11 @@
 #define ltob init_ltob
 #define do_printf init_do_printf
 #define printf init_printf
+#define dbgc_printf init_dbgc_printf
 #define sprintf init_sprintf
 #define charp init_charp
 #endif
 
-#include "debug.h"  /* must be below xx to init_xx */
 
 /* special console output routine */
 /*#define DOSEMU */
@@ -90,6 +91,15 @@ void put_console(int c)
 #ifdef __WATCOMC__
 void int29(char c);
 #pragma aux int29 = "int 0x29" parm [al] modify exact [bx];
+
+#ifdef DEBUG_PRINT_COMPORT
+static BYTE usecomport = 0;
+
+void fastComPrint(char c);
+#pragma aux fastComPrint = \
+      "mov bx, 0xFD05" \
+      "int 0x29" parm [al] modify exact [bx];
+#endif
 #endif
 
 void put_console(int c)
@@ -104,7 +114,12 @@ void put_console(int c)
   _AL = c;
   __int__(0x29);
 #elif defined(__WATCOMC__)
-  int29(c);
+#ifdef DEBUG_PRINT_COMPORT
+  if (usecomport)
+    fastComPrint(c);
+  else
+#endif
+    int29(c);
 #elif defined(I86)
   __asm
   {
@@ -122,7 +137,7 @@ void put_console(int c)
 /* need to use FAR pointers for resident DEBUG printf()s where SS != DS */
 #define SSFAR FAR
 #else
-#define SSFAR
+#define SSFAR FAR  /* **** */
 #endif
 
 #ifndef FORSYS
@@ -137,7 +152,7 @@ static BYTE SSFAR *charp = 0;
 
 STATIC VOID handle_char(COUNT);
 STATIC void ltob(LONG, BYTE SSFAR *, COUNT);
-STATIC void do_printf(const char *, REG va_list);
+STATIC void vprintf(CONST char *, REG va_list);
 
 /* special handler to switch between sprintf and printf */
 STATIC VOID handle_char(COUNT c)
@@ -194,9 +209,29 @@ int VA_CDECL printf(CONST char *fmt, ...)
   va_list arg;
   va_start(arg, fmt);
   charp = 0;
-  do_printf(fmt, arg);
+#ifdef DEBUG_PRINT_COMPORT
+  usecomport=1;
+#endif
+  vprintf(fmt, arg);
+#ifdef DEBUG_PRINT_COMPORT
+  usecomport=0;
+#endif
   return 0;
 }
+
+#ifdef DEBUG_PRINT_COMPORT
+int VA_CDECL dbgc_printf(CONST char *fmt, ...)
+{
+  va_list arg;
+  va_start(arg, fmt);
+  charp = 0;
+  ++usecomport;
+  vprintf(fmt, arg);
+  --usecomport;
+  return 0;
+}
+#endif
+
 
 #if defined(DEBUG_NEED_PRINTF) && !defined(_INIT) && !defined(FORSYS)
 STATIC int VA_CDECL fsprintf(char FAR * buff, CONST char * fmt, ...)
@@ -205,7 +240,7 @@ STATIC int VA_CDECL fsprintf(char FAR * buff, CONST char * fmt, ...)
 
   va_start(arg, fmt);
   charp = buff;
-  do_printf(fmt, arg);
+  vprintf(fmt, arg);
   handle_char('\0');
   return 0;
 }
@@ -219,12 +254,12 @@ int VA_CDECL sprintf(char * buff, CONST char * fmt, ...)
 
   va_start(arg, fmt);
   charp = buff;
-  do_printf(fmt, arg);
+  vprintf(fmt, arg);
   handle_char('\0');
   return 0;
 }
 
-STATIC void do_printf(CONST BYTE * fmt, va_list arg)
+STATIC void vprintf (CONST char * fmt, va_list arg )
 {
   int base;
   BYTE s[11], FAR * p;

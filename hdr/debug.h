@@ -124,6 +124,13 @@
 #define tn_printf(x)
 #endif
 
+/* task/process handling routines (task.c) */
+#ifdef DEBUGTASK
+#define TaskDbgPrintf(x) DebugPrintf(x)
+#else
+#define TaskDbgPrintf(x) 
+#endif
+
 
 /* ensure printf is prototyped */
 #if defined(DEBUG) || defined(DEBUGIRQ) || defined(DEBUGCFG) || \
